@@ -109,7 +109,7 @@ class ApiService {
     }
   }
 
-static Future<ApiResponse<dynamic>> sendVerificationCode(String email, String userType) async {
+static Future<ApiResponse<dynamic>> sendVerificationCode(String email, String password, String userType) async {
   try {
     // Primero verificar en qué tabla existe el usuario
     final userTypeCheck = await checkUserExists(email);
@@ -130,6 +130,7 @@ static Future<ApiResponse<dynamic>> sendVerificationCode(String email, String us
       headers: _headers,
       body: jsonEncode({
         'correo': email,
+        'password': password,
         'userType': actualUserType,
       }),
     );

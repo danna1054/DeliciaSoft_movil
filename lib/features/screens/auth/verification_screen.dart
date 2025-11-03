@@ -55,13 +55,19 @@ class _VerificationScreenState extends State<VerificationScreen> {
     if (widget.userType != null && !widget.isPasswordReset) {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       
-      final response = await authProvider.sendVerificationCode(
-        widget.email,
-        widget.userType!,
-      );
+      // ✅ CAMBIO CRÍTICO: Ahora se envía también la contraseña
+      if (widget.password != null) {
+        final response = await authProvider.sendVerificationCode(
+          widget.email,
+          widget.password!, // ✅ Agregar password
+          widget.userType!,
+        );
 
-      if (mounted && response != null && response['error'] != null) {
-        _showErrorAlert('Error enviando código inicial: ${response['error']}');
+        if (mounted && response != null && response['error'] != null) {
+          _showErrorAlert('Error enviando código inicial: ${response['error']}');
+        }
+      } else {
+        _showErrorAlert('Error: Falta la contraseña para enviar el código');
       }
     }
   }
@@ -180,23 +186,20 @@ class _VerificationScreenState extends State<VerificationScreen> {
       final isChangePassword = args?['isChangePassword'] ?? false;
 
       if (isChangePassword) {
-        // 🔧 Para cambio de contraseña (usuario logueado)
         _showSuccessAlert('Código validado. Ingresa tu nueva contraseña...');
         await Future.delayed(const Duration(milliseconds: 1500));
         if (!mounted) return;
         
-        // Navegar al reset password pero indicando que es cambio de contraseña
         Navigator.of(context).pushNamed(
           AppRoutes.resetPassword,
           arguments: {
             'email': widget.email,
             'verificationCode': verificationCode,
-            'isChangePassword': true, // 🔧 Importante: indica que es cambio, no reset
+            'isChangePassword': true,
             'userType': widget.userType,
           },
         );
       } else {
-        // 🔧 Para reset de contraseña (usuario no logueado)
         _showSuccessAlert('Código validado. Redirigiendo para restablecer contraseña...');
         await Future.delayed(const Duration(milliseconds: 1500));
         if (!mounted) return;
@@ -206,7 +209,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
           arguments: {
             'email': widget.email,
             'verificationCode': verificationCode,
-            'isChangePassword': false, // 🔧 Es un reset completo
+            'isChangePassword': false,
             'userType': widget.userType,
           },
         );
@@ -228,9 +231,11 @@ class _VerificationScreenState extends State<VerificationScreen> {
     
     if (!mounted) return;
 
-    if (widget.userType != null) {
+    // ✅ CAMBIO CRÍTICO: Ahora también envía la contraseña al reenviar
+    if (widget.userType != null && widget.password != null) {
       final response = await authProvider.sendVerificationCode(
         widget.email,
+        widget.password!, // ✅ Agregar password
         widget.userType!,
       );
 
@@ -243,21 +248,18 @@ class _VerificationScreenState extends State<VerificationScreen> {
         _clearCodeFields();
       }
     } else {
-      _showErrorAlert('No se puede reenviar el código: tipo de usuario no definido.');
+      _showErrorAlert('No se puede reenviar el código: faltan datos necesarios.');
     }
   }
 
   Future<bool> _onWillPop() async {
-    // 🔧 Si es cambio de contraseña, permitir regresar al perfil
     final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
     final isChangePassword = args?['isChangePassword'] ?? false;
     
     if (isChangePassword) {
-      // Si es cambio de contraseña, regresar directamente al perfil
       return true;
     }
     
-    // Para otros casos, mostrar confirmación
     return await showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -318,7 +320,6 @@ Widget build(BuildContext context) {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // Indicador de progreso (solo para reset de contraseña, no para login)
                     if (!widget.isLogin)
                       Container(
                         margin: const EdgeInsets.only(bottom: 32),
@@ -345,7 +346,6 @@ Widget build(BuildContext context) {
                         ),
                       ),
 
-                    // Icono y título
                     Center(
                       child: Container(
                         width: 80,
@@ -382,7 +382,6 @@ Widget build(BuildContext context) {
                     ),
                     const SizedBox(height: 40),
 
-                    // Campos de código en cuadritos
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: List.generate(6, (index) {

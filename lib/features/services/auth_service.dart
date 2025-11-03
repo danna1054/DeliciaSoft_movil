@@ -343,9 +343,9 @@ static Future<AuthResponse> verifyCodeAndLogin(String email, String password, St
   }
 }
 
-static Future<bool> sendVerificationCode(String email, String userType) async {
+static Future<bool> sendVerificationCode(String email, String password, String userType) async {
   try {
-    final response = await ApiService.sendVerificationCode(email, userType);
+    final response = await ApiService.sendVerificationCode(email, password, userType);
     
     if (response.success) {
       return true;

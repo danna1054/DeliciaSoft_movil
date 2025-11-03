@@ -4,6 +4,7 @@ import '../providers/auth_provider.dart';
 import 'products/home_screen.dart';
 import 'auth/login_screen.dart';
 import 'client/client_dashboard.dart';
+import 'client/client_pedido_history_screen.dart';
 import 'admin/admin_dashboard.dart';
 import 'admin/ventas/pedido_list_screen.dart'; // Add this line
 
@@ -39,7 +40,7 @@ class _HomeNavigationState extends State<HomeNavigation> {
     return [
       HomeScreen(),
       const ClientDashboard(), 
-      const Center(child: Text('Mis pedidos')),
+      const ClientPedidoHistoryScreen(),
       const SizedBox(),
     ];
   }

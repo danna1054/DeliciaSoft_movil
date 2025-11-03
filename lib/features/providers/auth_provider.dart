@@ -91,7 +91,7 @@ Future<String?> validateCredentials(String email, String password, String userTy
   }
 }
 
-  Future<Map<String, dynamic>?> sendVerificationCode(String email, String userType) async {
+Future<Map<String, dynamic>?> sendVerificationCode(String email, String password, String userType) async {
   if (_isSendingCode) {
     return {'error': 'Ya se está enviando un código, por favor espera...'};
   }
@@ -99,7 +99,7 @@ Future<String?> validateCredentials(String email, String password, String userTy
   _isSendingCode = true;
 
   try {
-  final response = await AuthService.sendVerificationCode(email, userType);
+  final response = await AuthService.sendVerificationCode(email, password, userType);
     if (response) {
       return {'success': true, 'userType': userType};
     } else {
@@ -115,7 +115,6 @@ Future<String?> validateCredentials(String email, String password, String userTy
     _isSendingCode = false;
   }
 }
-
 
 Future<String?> verifyCodeAndLogin(
   String email,
@@ -146,7 +145,6 @@ Future<String?> verifyCodeAndLogin(
         final userDataMap = response.user as Map<String, dynamic>?;
         if (userDataMap != null) {
           if (_userType == Constants.adminType) {
-            // ✅ SOLO PARA ADMIN: normalizar campos
             final completeUserData = {
               'idUsuario': userDataMap['idUsuario'] ?? userDataMap['idusuario'] ?? 0,
               'nombre': userDataMap['nombre'] ?? '',
@@ -170,23 +168,59 @@ Future<String?> verifyCodeAndLogin(
             await StorageService.saveUserData(_currentUser!.toJson());
 
           } else if (_userType == Constants.clientType) {
-            // ✅ PARA CLIENTE: DEJAR COMO ESTABA (sin tocar hashContrasena)
-            final completeClientData = Map<String, dynamic>.from(userDataMap);
+            // ✅ SOLUCIÓN: Normalizar campos de cliente
+            final completeClientData = {
+              // Normalizar idCliente (puede venir como idcliente o idCliente)
+              'idCliente': userDataMap['idCliente'] ?? 
+                          userDataMap['idcliente'] ?? 
+                          0,
+              'tipoDocumento': userDataMap['tipoDocumento'] ?? 
+                              userDataMap['tipodocumento'] ?? 
+                              '',
+              'numeroDocumento': userDataMap['numeroDocumento'] ?? 
+                                userDataMap['numerodocumento'] ?? 
+                                '',
+              'nombre': userDataMap['nombre'] ?? '',
+              'apellido': userDataMap['apellido'] ?? '',
+              'correo': userDataMap['correo'] ?? '',
+              'direccion': userDataMap['direccion'] ?? '',
+              'barrio': userDataMap['barrio'] ?? '',
+              'ciudad': userDataMap['ciudad'] ?? '',
+              'fechaNacimiento': userDataMap['fechaNacimiento'] ?? 
+                                userDataMap['fechanacimiento'],
+              'celular': userDataMap['celular'] ?? '',
+              'estado': userDataMap['estado'] ?? true,
+              // NO incluir contrasena/hashContrasena aquí
+            };
 
-            if (completeClientData['idCliente'] == null) {
+            print('=== DATOS CLIENTE NORMALIZADOS ===');
+            print('ID Cliente: ${completeClientData['idCliente']}');
+            print('Nombre: ${completeClientData['nombre']}');
+            print('Correo: ${completeClientData['correo']}');
+            print('================================');
+
+            // Si aún no tenemos idCliente válido, intentar obtenerlo
+            if (completeClientData['idCliente'] == 0) {
+              print('⚠️ idCliente es 0, intentando obtener por correo...');
               try {
-                final clientProfile = await ApiService.getClientByEmail(_token!, completeClientData['correo'] as String);
+                final clientProfile = await ApiService.getClientByEmail(
+                  _token!, 
+                  completeClientData['correo'] as String
+                );
                 if (clientProfile.success && clientProfile.data != null) {
                   completeClientData['idCliente'] = clientProfile.data!.idCliente;
+                  print('✅ idCliente obtenido: ${completeClientData['idCliente']}');
                 }
               } catch (e) {
-                debugPrint('No se pudo obtener idCliente por correo: $e');
+                print('❌ No se pudo obtener idCliente por correo: $e');
               }
             }
 
             _currentClient = Cliente.fromJson(completeClientData);
             _currentUser = null;
             await StorageService.saveUserData(_currentClient!.toJson());
+            
+            print('✅ Cliente guardado con ID: ${_currentClient!.idCliente}');
           }
         } else {
           _error = 'Datos de usuario incompletos recibidos. Intente de nuevo.';
@@ -231,8 +265,8 @@ Future<void> initialize() async {
 
       if (authResponse.user != null && _userType != null && _token != null) {
         final userDataMap = authResponse.user as Map<String, dynamic>;
+        
         if (_userType == Constants.adminType) {
-          // ✅ SOLO PARA ADMIN: normalizar campos
           final completeUserData = {
             'idUsuario': userDataMap['idUsuario'] ?? userDataMap['idusuario'] ?? 0,
             'nombre': userDataMap['nombre'] ?? '',
@@ -245,9 +279,38 @@ Future<void> initialize() async {
             'idRol': userDataMap['idRol'] ?? userDataMap['idrol'] ?? 2,
           };
           _currentUser = Usuario.fromJson(completeUserData);
+          
         } else if (_userType == Constants.clientType) {
-          // ✅ PARA CLIENTE: DEJAR COMO ESTABA
-          _currentClient = Cliente.fromJson(userDataMap);
+          // ✅ SOLUCIÓN: Normalizar campos de cliente
+          final completeClientData = {
+            'idCliente': userDataMap['idCliente'] ?? 
+                        userDataMap['idcliente'] ?? 
+                        0,
+            'tipoDocumento': userDataMap['tipoDocumento'] ?? 
+                            userDataMap['tipodocumento'] ?? 
+                            '',
+            'numeroDocumento': userDataMap['numeroDocumento'] ?? 
+                              userDataMap['numerodocumento'] ?? 
+                              '',
+            'nombre': userDataMap['nombre'] ?? '',
+            'apellido': userDataMap['apellido'] ?? '',
+            'correo': userDataMap['correo'] ?? '',
+            'direccion': userDataMap['direccion'] ?? '',
+            'barrio': userDataMap['barrio'] ?? '',
+            'ciudad': userDataMap['ciudad'] ?? '',
+            'fechaNacimiento': userDataMap['fechaNacimiento'] ?? 
+                              userDataMap['fechanacimiento'],
+            'celular': userDataMap['celular'] ?? '',
+            'estado': userDataMap['estado'] ?? true,
+          };
+
+          print('=== DATOS CLIENTE INITIALIZE NORMALIZADOS ===');
+          print('ID Cliente: ${completeClientData['idCliente']}');
+          print('==========================================');
+
+          _currentClient = Cliente.fromJson(completeClientData);
+          
+          print('✅ Cliente inicializado con ID: ${_currentClient!.idCliente}');
         }
       } else {
         _error = 'Datos incompletos en autoLogin.';
