@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
 import '../../models/General_models.dart' as GeneralModels;
 import '../../services/donas_api_services.dart';
 import '../../services/cart_services.dart';
@@ -23,14 +24,7 @@ class _BebidasScreenState extends State<BebidasScreen> {
   bool isLoading = true;
   String? errorMessage;
 
-  // ✅ FUNCIÓN PARA FORMATEAR PRECIOS CON PUNTOS DE MIL
-  String formatPrice(double price) {
-    final priceStr = price.toStringAsFixed(0);
-    return priceStr.replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (Match m) => '${m[1]}.',
-    );
-  }
+  final formatoCOP = NumberFormat.currency(locale: 'es_CO', symbol: '\$', decimalDigits: 0);
 
   @override
   void initState() {
@@ -96,7 +90,7 @@ class _BebidasScreenState extends State<BebidasScreen> {
     }
   }
 
-  // ✅ FUNCIÓN PARA AGREGAR AL CARRITO DIRECTAMENTE
+  // ✅ FUNCIÓN PARA AGREGAR AL CARRITO CON ALERTA DE ÉXITO
   void _addToCart(GeneralModels.ProductModel producto) {
     final cartService = Provider.of<CartService>(context, listen: false);
     
@@ -116,15 +110,102 @@ class _BebidasScreenState extends State<BebidasScreen> {
       configuraciones: [config],
     );
 
-    // Mostrar mensaje de éxito
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${producto.nombreProducto} agregado al carrito'),
-        backgroundColor: Colors.green,
-        duration: const Duration(seconds: 2),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
+    // Mostrar alerta de éxito en lugar del SnackBar
+    _showSuccessAlert(producto);
+  }
+
+  void _showSuccessAlert(GeneralModels.ProductModel producto) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Colors.green[50]!, const Color.fromARGB(255, 230, 200, 227)],
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.green[100],
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.shopping_cart,
+                  color: Color.fromARGB(255, 160, 67, 112),
+                  size: 40,
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                '¡Éxito!',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Color.fromARGB(255, 175, 76, 137),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Se ha añadido ${producto.nombreProducto} al carrito',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 16),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Precio: ${formatoCOP.format(producto.precioProducto)}',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Color.fromARGB(255, 175, 76, 122),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  OutlinedButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                    },
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color.fromARGB(255, 175, 76, 119),
+                      side: const BorderSide(color: Color.fromARGB(255, 175, 76, 140)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    ),
+                    child: const Text('Seguir comprando'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      Navigator.pop(context);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color.fromARGB(255, 175, 76, 130),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    ),
+                    child: const Text('Volver al inicio'),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -174,7 +255,7 @@ class _BebidasScreenState extends State<BebidasScreen> {
                   const SizedBox(height: 8),
                   if (precio > 0) ...[
                     Text(
-                      '\$${formatPrice(precio)}',
+                      '${formatoCOP.format(precio)}',
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,

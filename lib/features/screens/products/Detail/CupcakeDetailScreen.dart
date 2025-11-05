@@ -105,7 +105,6 @@ class _CupcakeDetailScreenState extends State<CupcakeDetailScreen> {
     }
   }
 
-  // ✅ FUNCIÓN PARA AGREGAR AL CARRITO
   void _agregarAlCarrito() {
     final cartService = Provider.of<CartService>(context, listen: false);
     
@@ -120,7 +119,6 @@ class _CupcakeDetailScreenState extends State<CupcakeDetailScreen> {
       return;
     }
 
-    // Crear configuración para el cupcake personalizado
     final config = ObleaConfiguration()
       ..tipoOblea = 'Cupcake Personalizado'
       ..precio = widget.product.precioProducto
@@ -131,28 +129,13 @@ class _CupcakeDetailScreenState extends State<CupcakeDetailScreen> {
         'Cantidad': '$cantidad ${cantidad == 1 ? 'cupcake' : 'cupcakes'}',
       };
 
-    // Agregar al carrito
     cartService.addToCart(
       producto: widget.product,
       cantidad: cantidad,
       configuraciones: [config],
     );
 
-    // Mostrar mensaje de éxito
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$cantidad ${cantidad == 1 ? 'cupcake' : 'cupcakes'} personalizado agregado al carrito'),
-        backgroundColor: Colors.green,
-        duration: const Duration(seconds: 3),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
-      ),
-    );
-
-    // Opcional: Regresar a la pantalla anterior
-    Navigator.pop(context);
+    _showSuccessAlert();
   }
 
   @override
@@ -284,7 +267,6 @@ class _CupcakeDetailScreenState extends State<CupcakeDetailScreen> {
     ValueChanged<String?> onChanged,
     bool isLoading,
   ) {
-    // Si está cargando, mostrar indicador
     if (isLoading) {
       return Container(
         padding: const EdgeInsets.all(16),
@@ -318,7 +300,6 @@ class _CupcakeDetailScreenState extends State<CupcakeDetailScreen> {
       );
     }
 
-    // Si no hay items y no está cargando, mostrar mensaje de error
     if (items.isEmpty && !isLoading) {
       return Container(
         padding: const EdgeInsets.all(16),
@@ -345,10 +326,7 @@ class _CupcakeDetailScreenState extends State<CupcakeDetailScreen> {
       );
     }
 
-    // Eliminar duplicados y valores vacíos
     final uniqueItems = items.where((item) => item.isNotEmpty).toSet().toList();
-    
-    // Verificar si el valor seleccionado está en la lista
     final validSelectedValue = uniqueItems.contains(selectedValue) ? selectedValue : null;
 
     return DropdownButtonFormField<String>(
@@ -511,6 +489,104 @@ class _CupcakeDetailScreenState extends State<CupcakeDetailScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                     ),
                     child: const Text('Entendido'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showSuccessAlert() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Colors.green[50]!, const Color.fromARGB(255, 230, 200, 227)],
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.green[100],
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.shopping_cart,
+                  color: Color.fromARGB(255, 160, 67, 112),
+                  size: 40,
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                '¡Éxito!',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Color.fromARGB(255, 175, 76, 137),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Se ${cantidad == 1 ? 'ha' : 'han'} añadido $cantidad ${cantidad == 1 ? 'cupcake' : 'cupcakes'} al carrito',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 16),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Total: \$${_precioTotal().toStringAsFixed(0)}',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Color.fromARGB(255, 175, 76, 122),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  OutlinedButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _resetFormulario();
+                    },
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color.fromARGB(255, 175, 76, 119),
+                      side: const BorderSide(color: Color.fromARGB(255, 175, 76, 140)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    ),
+                    child: const Text('Seguir comprando'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      Navigator.pop(context);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color.fromARGB(255, 175, 76, 130),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    ),
+                    child: const Text('Volver al inicio'),
                   ),
                 ],
               ),

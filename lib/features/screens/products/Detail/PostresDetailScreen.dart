@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
 import '../../../models/General_models.dart';
 import '../../../services/cart_services.dart';
 import '../../../models/cart_models.dart';
@@ -22,6 +23,8 @@ class _PostreDetailScreenState extends State<PostreDetailScreen> {
   List<dynamic> saboresDisponibles = [];
   bool isLoadingSabores = true;
   String errorMessage = '';
+
+  final formatoCOP = NumberFormat.currency(locale: 'es_CO', symbol: '\$', decimalDigits: 0);
 
   // Precios de cada tipo de postre
   final Map<String, PostreDefaults> postreDefaults = {
@@ -54,15 +57,6 @@ class _PostreDetailScreenState extends State<PostreDetailScreen> {
     'Tiramisú (\$5000)',
     'Cheesecake (\$6000)',
   ];
-
-  // ✅ FUNCIÓN PARA FORMATEAR PRECIOS CON PUNTOS DE MIL
-  String formatPrice(double price) {
-    final priceStr = price.toStringAsFixed(0);
-    return priceStr.replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (Match m) => '${m[1]}.',
-    );
-  }
 
   @override
   void initState() {
@@ -426,7 +420,7 @@ class _PostreDetailScreenState extends State<PostreDetailScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Precio Base: \$${(defaults?.precio ?? 0).toStringAsFixed(0)}',
+                          'Precio Base: ${formatoCOP.format(defaults?.precio ?? 0)}',
                           style: const TextStyle(
                             fontWeight: FontWeight.w600,
                             color: Colors.green,
@@ -435,7 +429,7 @@ class _PostreDetailScreenState extends State<PostreDetailScreen> {
                         ),
                         if (config.idSabor != null)
                           Text(
-                            'Adición Sabor: +\$${_getSaborPrecioAdicion(config.idSabor!).toStringAsFixed(0)}',
+                            'Adición Sabor: +${formatoCOP.format(_getSaborPrecioAdicion(config.idSabor!))}',
                             style: const TextStyle(
                               fontWeight: FontWeight.w600,
                               color: Colors.pink,
@@ -443,7 +437,7 @@ class _PostreDetailScreenState extends State<PostreDetailScreen> {
                             ),
                           ),
                         Text(
-                          'Total: \$${formatPrice(_getUnitPrice(config))}',
+                          'Total: ${formatoCOP.format(_getUnitPrice(config))}',
                           style: const TextStyle(
                             fontWeight: FontWeight.bold,
                             color: Colors.green,
@@ -618,7 +612,7 @@ class _PostreDetailScreenState extends State<PostreDetailScreen> {
         ],
       ),
       child: Text(
-        'Total: \$${formatPrice(totalPrice)}',
+        'Total: ${formatoCOP.format(totalPrice)}',
         style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
       ),
     );
@@ -635,7 +629,7 @@ class _PostreDetailScreenState extends State<PostreDetailScreen> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(
-            'Total: \$${formatPrice(totalPrice)}',
+            'Total: ${formatoCOP.format(totalPrice)}',
             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
           ),
           GestureDetector(
@@ -704,7 +698,6 @@ class _PostreDetailScreenState extends State<PostreDetailScreen> {
     );
   }
 
-  // ✅ FUNCIÓN CORREGIDA PARA AÑADIR AL CARRITO
   void _handleAddToCart() {
     List<String> errors = [];
     
@@ -725,21 +718,18 @@ class _PostreDetailScreenState extends State<PostreDetailScreen> {
       return;
     }
 
-    // ✅ CORREGIDO: Usar el mismo método que en ObleaDetailScreen
     final cartService = Provider.of<CartService>(context, listen: false);
+    final configuraciones = <ObleaConfiguration>[];
 
-    // Para cada postre, crear una configuración similar a las obleas
     for (int i = 0; i < postreConfigurations.length; i++) {
       final config = postreConfigurations[i];
       final unitPrice = _getUnitPrice(config);
       
-      // Obtener nombre del sabor
       final sabor = saboresDisponibles.firstWhere(
         (s) => s["idSabor"] == config.idSabor,
         orElse: () => {"nombre": "Desconocido"},
       );
       
-      // Crear configuración similar a ObleaConfiguration
       final postreConfig = ObleaConfiguration()
         ..tipoOblea = '${config.tipoPostre} - ${sabor["nombre"]}'
         ..precio = unitPrice
@@ -750,13 +740,14 @@ class _PostreDetailScreenState extends State<PostreDetailScreen> {
           'Adición Sabor': _getSaborPrecioAdicion(config.idSabor!).toString(),
         };
 
-      // ✅ CORREGIDO: Usar el mismo método que en obleas
-      cartService.addToCart(
-        producto: widget.product,
-        cantidad: 1, // Cada postre es un item separado
-        configuraciones: [postreConfig],
-      );
+      configuraciones.add(postreConfig);
     }
+
+    cartService.addToCart(
+      producto: widget.product,
+      cantidad: quantity,
+      configuraciones: configuraciones,
+    );
 
     _showSuccessAlert();
   }
@@ -859,7 +850,7 @@ class _PostreDetailScreenState extends State<PostreDetailScreen> {
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [Colors.green[50]!, const Color.fromARGB(255, 230, 200, 227)!],
+              colors: [Colors.green[50]!, const Color.fromARGB(255, 230, 200, 227)],
             ),
           ),
           child: Column(
@@ -871,9 +862,9 @@ class _PostreDetailScreenState extends State<PostreDetailScreen> {
                   color: Colors.green[100],
                   shape: BoxShape.circle,
                 ),
-                child: Icon(
-                  Icons.check_circle_outline,
-                  color: const Color.fromARGB(255, 160, 67, 112),
+                child: const Icon(
+                  Icons.shopping_cart,
+                  color: Color.fromARGB(255, 160, 67, 112),
                   size: 40,
                 ),
               ),
@@ -894,7 +885,7 @@ class _PostreDetailScreenState extends State<PostreDetailScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                'Total: \$${formatPrice(totalPrice)}',
+                'Total: ${formatoCOP.format(totalPrice)}',
                 style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -908,7 +899,6 @@ class _PostreDetailScreenState extends State<PostreDetailScreen> {
                   OutlinedButton(
                     onPressed: () {
                       Navigator.pop(context);
-                      _resetForm();
                     },
                     style: OutlinedButton.styleFrom(
                       foregroundColor: const Color.fromARGB(255, 175, 76, 119),
@@ -923,7 +913,7 @@ class _PostreDetailScreenState extends State<PostreDetailScreen> {
                   ElevatedButton(
                     onPressed: () {
                       Navigator.pop(context);
-                      Navigator.pop(context); 
+                      Navigator.pop(context);
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color.fromARGB(255, 175, 76, 130),

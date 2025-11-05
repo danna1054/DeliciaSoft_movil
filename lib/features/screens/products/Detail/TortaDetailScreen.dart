@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
 import '../../../models/General_models.dart';
 import '../../../services/cart_services.dart';
 import '../../../models/cart_models.dart';
@@ -22,13 +23,7 @@ class _TortaDetailScreenState extends State<TortaDetailScreen> {
   List<String> sabores = [];
   bool isLoadingData = true;
 
-  String formatPrice(double price) {
-    final priceStr = price.toStringAsFixed(0);
-    return priceStr.replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (Match m) => '${m[1]}.',
-    );
-  }
+  final formatoCOP = NumberFormat.currency(locale: 'es_CO', symbol: '\$', decimalDigits: 0);
 
   // ✅ MAPEO MEJORADO: Incluye más variaciones de nombres
   final Map<String, double> preciosPorPorcion = {
@@ -367,7 +362,7 @@ class _TortaDetailScreenState extends State<TortaDetailScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      'Precio: \$${formatPrice(_getUnitPrice(config))}',
+                      'Precio: ${formatoCOP.format(_getUnitPrice(config))}',
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         color: Colors.green,
@@ -569,7 +564,7 @@ class _TortaDetailScreenState extends State<TortaDetailScreen> {
         ],
       ),
       child: Text(
-        'Total: \$${formatPrice(totalPrice)}',
+        'Total: ${formatoCOP.format(totalPrice)}',
         style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
       ),
     );
@@ -586,7 +581,7 @@ class _TortaDetailScreenState extends State<TortaDetailScreen> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(
-            'Total: \$${formatPrice(totalPrice)}',
+            'Total: ${formatoCOP.format(totalPrice)}',
             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
           ),
           GestureDetector(
@@ -707,6 +702,7 @@ class _TortaDetailScreenState extends State<TortaDetailScreen> {
     }
 
     final cartService = Provider.of<CartService>(context, listen: false);
+    final configuraciones = <ObleaConfiguration>[];
 
     for (int i = 0; i < tortaConfigurations.length; i++) {
       final config = tortaConfigurations[i];
@@ -725,12 +721,14 @@ class _TortaDetailScreenState extends State<TortaDetailScreen> {
             'Libras': config.libras.toString(),
         };
 
-      cartService.addToCart(
-        producto: widget.product,
-        cantidad: 1,
-        configuraciones: [tortaConfig],
-      );
+      configuraciones.add(tortaConfig);
     }
+
+    cartService.addToCart(
+      producto: widget.product,
+      cantidad: quantity,
+      configuraciones: configuraciones,
+    );
 
     _showSuccessAlert();
   }
@@ -762,7 +760,7 @@ class _TortaDetailScreenState extends State<TortaDetailScreen> {
                 ),
                 child: Icon(
                   Icons.error_outline,
-                  color: Colors.red[600],
+                  color: Colors.pink[600],
                   size: 30,
                 ),
               ),
@@ -772,7 +770,7 @@ class _TortaDetailScreenState extends State<TortaDetailScreen> {
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
-                  color: Colors.red,
+                  color: Colors.pink,
                 ),
               ),
               const SizedBox(height: 12),
@@ -799,7 +797,7 @@ class _TortaDetailScreenState extends State<TortaDetailScreen> {
               ElevatedButton(
                 onPressed: () => Navigator.pop(context),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
+                  backgroundColor: Colors.pink,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
@@ -841,7 +839,7 @@ class _TortaDetailScreenState extends State<TortaDetailScreen> {
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
-                  Icons.check_circle_outline,
+                  Icons.shopping_cart,
                   color: Color.fromARGB(255, 160, 67, 112),
                   size: 40,
                 ),
@@ -863,7 +861,7 @@ class _TortaDetailScreenState extends State<TortaDetailScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                'Total: \$${formatPrice(totalPrice)}',
+                'Total: ${formatoCOP.format(totalPrice)}',
                 style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -877,7 +875,6 @@ class _TortaDetailScreenState extends State<TortaDetailScreen> {
                   OutlinedButton(
                     onPressed: () {
                       Navigator.pop(context);
-                      _resetForm();
                     },
                     style: OutlinedButton.styleFrom(
                       foregroundColor: const Color.fromARGB(255, 175, 76, 119),
@@ -892,7 +889,7 @@ class _TortaDetailScreenState extends State<TortaDetailScreen> {
                   ElevatedButton(
                     onPressed: () {
                       Navigator.pop(context);
-                      Navigator.pop(context); 
+                      Navigator.pop(context);
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color.fromARGB(255, 175, 76, 130),

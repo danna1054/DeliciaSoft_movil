@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
 import '../../models/General_models.dart' as GeneralModels;
 import '../../services/donas_api_services.dart';
 import '../../services/cart_services.dart';
+import '../../models/cart_models.dart';
 import '../cart_screen.dart';
 
 class SandwichesScreen extends StatefulWidget {
@@ -17,6 +19,7 @@ class SandwichesScreen extends StatefulWidget {
 class _SandwichesScreenState extends State<SandwichesScreen> {
   final TextEditingController _searchController = TextEditingController();
   final ProductoApiService _apiService = ProductoApiService();
+  final formatoCOP = NumberFormat.currency(locale: 'es_CO', symbol: '\$', decimalDigits: 0);
 
   List<GeneralModels.ProductModel> allProductos = [];
   List<GeneralModels.ProductModel> filteredProductos = [];
@@ -38,7 +41,7 @@ class _SandwichesScreenState extends State<SandwichesScreen> {
       });
 
       List<GeneralModels.ProductModel> productos =
-          await _apiService.obtenerProductosPorCategoriaId(7);
+          await _apiService.obtenerProductosPorCategoriaId(8);
 
       if (mounted) {
         setState(() {
@@ -87,12 +90,121 @@ class _SandwichesScreenState extends State<SandwichesScreen> {
   }
 
   void _addToCart(GeneralModels.ProductModel producto) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${producto.nombreProducto} agregado al carrito'),
-        backgroundColor: Colors.green,
-        duration: const Duration(seconds: 2),
-        behavior: SnackBarBehavior.floating,
+    final cartService = Provider.of<CartService>(context, listen: false);
+    
+    // Crear una configuración simple para el sandwich
+    final configuracion = ObleaConfiguration()
+      ..tipoOblea = 'Estándar'
+      ..precio = producto.precioProducto
+      ..ingredientesPersonalizados = {
+        'Producto': producto.nombreProducto,
+        'Precio': '\$${producto.precioProducto.toStringAsFixed(0)}',
+      };
+
+    // Agregar al carrito
+    cartService.addToCart(
+      producto: producto,
+      cantidad: 1,
+      configuraciones: [configuracion],
+    );
+
+    // Mostrar diálogo de éxito
+    _showSuccessAlert(producto);
+  }
+
+  void _showSuccessAlert(GeneralModels.ProductModel producto) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Colors.green[50]!, const Color.fromARGB(255, 230, 200, 227)],
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.green[100],
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.shopping_cart,
+                  color: Color.fromARGB(255, 160, 67, 112),
+                  size: 40,
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                '¡Éxito!',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Color.fromARGB(255, 175, 76, 137),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Se ha añadido 1 producto al carrito',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 16),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Total: ${formatoCOP.format(producto.precioProducto)}',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Color.fromARGB(255, 175, 76, 122),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  OutlinedButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                    },
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color.fromARGB(255, 175, 76, 119),
+                      side: const BorderSide(color: Color.fromARGB(255, 175, 76, 140)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    ),
+                    child: const Text('Seguir comprando'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      Navigator.pop(context);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color.fromARGB(255, 175, 76, 130),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    ),
+                    child: const Text('Volver al inicio'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -490,4 +602,5 @@ class _SandwichesScreenState extends State<SandwichesScreen> {
               ],
             ),
     );
-  }}
+  }
+}
