@@ -2,10 +2,13 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
+import '../services/cart_services.dart';
+import '../services/venta_api_service.dart';
+import '../providers/auth_provider.dart';
+import '../models/cart_models.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import '../services/cart_services.dart';
-import '../providers/auth_provider.dart';
+import '../utils/constants.dart';
 
 class CheckoutScreen extends StatefulWidget {
   final int clientId;
@@ -19,14 +22,13 @@ class CheckoutScreen extends StatefulWidget {
 class _CheckoutScreenState extends State<CheckoutScreen> {
   final _formKey = GlobalKey<FormState>();
   final _observacionesController = TextEditingController();
-  final _mensajeController = TextEditingController();
   final _abonoController = TextEditingController();
   
   List<dynamic> _sedes = [];
   int? _sedeSeleccionada;
   DateTime? _fechaEntrega;
   String _metodoPago = 'Efectivo';
-  File? _comprobanteImagen;
+  XFile? _comprobanteImagen;
   bool _isLoading = false;
   bool _isLoadingSedes = true;
   double _totalPedido = 0;
@@ -46,11 +48,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
-  String _formatDateForAPI(DateTime date) {
-    String pad(int n) => n.toString().padLeft(2, '0');
-    return '${date.year}-${pad(date.month)}-${pad(date.day)}T${pad(date.hour)}:${pad(date.minute)}:${pad(date.second)}';
-  }
-
   @override
   void initState() {
     super.initState();
@@ -66,61 +63,50 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     });
   }
 
+  // ✅ MÉTODO CORREGIDO PARA CARGAR SEDES REALES
   Future<void> _cargarSedes() async {
     setState(() => _isLoadingSedes = true);
     try {
+      print('📍 Cargando sedes desde API...');
+      
       final response = await http.get(
-        Uri.parse('https://deliciasoft-backend-i6g9.onrender.com/api/sede'),
-        headers: {'Content-Type': 'application/json'},
-      ).timeout(
-        const Duration(seconds: 15),
-        onTimeout: () {
-          throw Exception('Tiempo de espera agotado');
+        Uri.parse('${Constants.baseUrl}/sede'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
         },
       );
       
+      print('Status code: ${response.statusCode}');
+      
       if (response.statusCode == 200) {
-        final dynamic responseData = json.decode(response.body);
-        List<dynamic> sedes = [];
+        final List<dynamic> sedesData = jsonDecode(response.body);
         
-        if (responseData is List) {
-          sedes = responseData;
-        } else if (responseData is Map) {
-          if (responseData.containsKey('data')) {
-            sedes = responseData['data'] as List;
-          } else if (responseData.containsKey('sedes')) {
-            sedes = responseData['sedes'] as List;
-          } else if (responseData.containsKey('result')) {
-            sedes = responseData['result'] as List;
-          }
-        }
+        // Filtrar solo sedes activas
+        final sedesActivas = sedesData.where((sede) => sede['estado'] == true).toList();
+        
+        print('✅ ${sedesActivas.length} sedes activas cargadas');
         
         if (mounted) {
           setState(() {
-            _sedes = sedes;
+            _sedes = sedesActivas;
             _isLoadingSedes = false;
+            
+            // Seleccionar primera sede por defecto
             if (_sedes.isNotEmpty) {
-              final dynamic primeraSedeId = _sedes[0]['idsede'] ?? _sedes[0]['idSede'] ?? _sedes[0]['id'];
-              if (primeraSedeId != null) {
-                _sedeSeleccionada = primeraSedeId is int ? primeraSedeId : int.tryParse(primeraSedeId.toString());
-              }
+              _sedeSeleccionada = _sedes[0]['idsede'];
+              print('Sede seleccionada por defecto: $_sedeSeleccionada');
             }
           });
         }
-        
-        if (_sedes.isEmpty) {
-          _mostrarMensaje('No hay sedes disponibles en este momento', Colors.orange);
-        }
       } else {
-        throw Exception('Error del servidor: ${response.statusCode}');
+        throw Exception('Error al cargar sedes: ${response.statusCode}');
       }
     } catch (e) {
+      print('❌ Error al cargar sedes: $e');
       if (mounted) {
         setState(() => _isLoadingSedes = false);
-        _mostrarMensaje(
-          'No se pudieron cargar las sedes. Verifica tu conexión.',
-          Colors.red,
-        );
+        _mostrarMensaje('Error al cargar sedes: ${e.toString()}', Colors.red);
       }
     }
   }
@@ -173,365 +159,175 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         imageQuality: 85,
       );
       if (image != null) {
-        setState(() => _comprobanteImagen = File(image.path));
+        setState(() => _comprobanteImagen = image);
       }
     } catch (e) {
       _mostrarMensaje('Error al seleccionar imagen: $e', Colors.red);
     }
   }
 
-// 🔥 REEMPLAZA SOLO LA FUNCIÓN _procesarPedido() EN checkout_screen.dart
-
-Future<void> _procesarPedido() async {
-  if (!_formKey.currentState!.validate()) return;
-  
-  final cartService = Provider.of<CartService>(context, listen: false);
-  
-  int totalProductos = cartService.items.fold(0, (sum, item) => sum + item.cantidad);
-  if (totalProductos < 10) {
-    _mostrarMensaje(
-      'Debes tener mínimo 10 productos en tu carrito. Actualmente tienes $totalProductos.',
-      Colors.orange,
-    );
-    return;
-  }
-  
-  if (_sedeSeleccionada == null) {
-    _mostrarMensaje('Selecciona una sede para recoger', Colors.orange);
-    return;
-  }
-  if (_fechaEntrega == null) {
-    _mostrarMensaje('Selecciona una fecha de entrega', Colors.orange);
-    return;
-  }
-  
-  String abonoText = _abonoController.text.replaceAll('.', '').replaceAll(',', '');
-  final double abonoIngresado = double.tryParse(abonoText) ?? 0;
-  final double minimoAbono = _totalPedido * 0.5;
-  
-  if (abonoIngresado < minimoAbono) {
-    _mostrarMensaje('El abono mínimo es del 50%: \$${_formatPrice(minimoAbono)}', Colors.orange);
-    return;
-  }
-  
-  if (_metodoPago == 'Transferencia' && _comprobanteImagen == null) {
-    _mostrarMensaje('Debes subir el comprobante de transferencia', Colors.orange);
-    return;
-  }
-  
-  setState(() => _isLoading = true);
-  
-  try {
-    final DateTime fechaEntregaConHora = DateTime(
-      _fechaEntrega!.year,
-      _fechaEntrega!.month,
-      _fechaEntrega!.day,
-      12,
-      0,
-      0,
-    );
-
-    final pedidoData = {
-      'idcliente': widget.clientId,
-      'idsede': _sedeSeleccionada,
-      'fechapedido': _formatDateForAPI(DateTime.now()),
-      'fechaentrega': _formatDateForAPI(fechaEntregaConHora),
-      'total': _totalPedido,
-      'estado': 'Pendiente',
-      'observaciones': _observacionesController.text.trim().isEmpty ? '' : _observacionesController.text.trim(),
-      'mensajepersonalizado': _mensajeController.text.trim().isEmpty ? '' : _mensajeController.text.trim(),
-    };
-
-    print('📦 ======================================== INICIO');
-    print('📦 CREANDO PEDIDO');
-    print('📦 URL: https://deliciasoft-backend-i6g9.onrender.com/api/pedido');
-    print('📦 ========================================');
-    print('📦 DATOS ENVIADOS:');
-    print(json.encode(pedidoData));
-    print('📦 ========================================');
-
-    final pedidoResponse = await http.post(
-      Uri.parse('https://deliciasoft-backend-i6g9.onrender.com/api/pedido'),
-      headers: {'Content-Type': 'application/json; charset=UTF-8'},
-      body: json.encode(pedidoData),
-    ).timeout(
-      const Duration(seconds: 30),
-      onTimeout: () => throw Exception('Tiempo de espera agotado al crear pedido'),
-    );
-
-    print('📦 ========================================');
-    print('📦 RESPUESTA DEL SERVIDOR');
-    print('📦 Status Code: ${pedidoResponse.statusCode}');
-    print('📦 ========================================');
-    print('📦 BODY COMPLETO:');
-    print(pedidoResponse.body);
-    print('📦 ========================================');
-
-    if (pedidoResponse.statusCode != 200 && pedidoResponse.statusCode != 201) {
-      throw Exception('Error al crear pedido: ${pedidoResponse.body}');
+  // ✅ FUNCIÓN CORREGIDA - SIN MENSAJE PERSONALIZADO
+  Future<void> _procesarPedido() async {
+    if (!_formKey.currentState!.validate()) return;
+    
+    final cartService = Provider.of<CartService>(context, listen: false);
+    
+    // Validaciones
+    int totalProductos = cartService.items.fold(0, (sum, item) => sum + item.cantidad);
+    if (totalProductos < 10) {
+      _mostrarMensaje(
+        'Debes tener mínimo 10 productos en tu carrito. Actualmente tienes $totalProductos.',
+        Colors.orange,
+      );
+      return;
     }
+    
+    if (_sedeSeleccionada == null) {
+      _mostrarMensaje('Selecciona una sede para recoger', Colors.orange);
+      return;
+    }
+    
+    if (_fechaEntrega == null) {
+      _mostrarMensaje('Selecciona una fecha de entrega', Colors.orange);
+      return;
+    }
+    
+    String abonoText = _abonoController.text.replaceAll('.', '').replaceAll(',', '');
+    final double abonoIngresado = double.tryParse(abonoText) ?? 0;
+    final double minimoAbono = _totalPedido * 0.5;
+    
+    if (abonoIngresado < minimoAbono) {
+      _mostrarMensaje('El abono mínimo es del 50%: \$${_formatPrice(minimoAbono)}', Colors.orange);
+      return;
+    }
+    
+    if (_metodoPago == 'Transferencia' && _comprobanteImagen == null) {
+      _mostrarMensaje('Debes subir el comprobante de transferencia', Colors.orange);
+      return;
+    }
+    
+    setState(() => _isLoading = true);
+    
+    try {
+      print('🚀 ======================================');
+      print('🚀 INICIANDO PROCESO DE CREACIÓN DE VENTA/PEDIDO');
+      print('🚀 ======================================');
 
-    // 🔥 PARSEAR RESPUESTA
-    final dynamic respuesta = json.decode(pedidoResponse.body);
-    
-    print('📦 ========================================');
-    print('📦 ANÁLISIS DE RESPUESTA');
-    print('📦 Tipo: ${respuesta.runtimeType}');
-    
-    // 🔥 EXTRAER TODOS LOS POSIBLES IDs
-    int? idPedido;
-    int? idVenta;
-    
-    if (respuesta is Map) {
-      print('📦 Es un Map, buscando IDs...');
-      print('📦 Claves disponibles: ${respuesta.keys.toList()}');
+      // 1️⃣ PREPARAR DETALLES DE VENTA - SIN IVA
+      final List<Map<String, dynamic>> detalleVenta = cartService.items.map((CartItem item) {
+        return {
+          'idproductogeneral': item.producto.idProductoGeneral,
+          'cantidad': item.cantidad,
+          'preciounitario': item.precioUnitario,
+          'subtotal': item.subtotal,
+          'iva': 0.0, // ✅ IVA en 0
+        };
+      }).toList();
+
+      print('📦 Productos a enviar: ${detalleVenta.length}');
+      detalleVenta.forEach((detalle) {
+        print('   - ID: ${detalle['idproductogeneral']}, Cant: ${detalle['cantidad']}, Subtotal: ${detalle['subtotal']}');
+      });
+
+      // 2️⃣ CREAR VENTA CON TIPO "PEDIDO" - SOLO CON OBSERVACIONES
+      print('\n📝 Creando venta tipo PEDIDO...');
+      print('   - Sede: $_sedeSeleccionada');
+      print('   - Fecha de entrega: ${_fechaEntrega!.toIso8601String()}');
+      print('   - Observaciones: ${_observacionesController.text}');
       
-      // Buscar en nivel raíz
-      if (respuesta.containsKey('idpedido')) {
-        idPedido = respuesta['idpedido'] is int ? respuesta['idpedido'] : int.tryParse(respuesta['idpedido'].toString());
-        print('📦 idpedido (raíz): $idPedido');
-      }
-      if (respuesta.containsKey('idventa')) {
-        idVenta = respuesta['idventa'] is int ? respuesta['idventa'] : int.tryParse(respuesta['idventa'].toString());
-        print('📦 idventa (raíz): $idVenta');
-      }
-      
-      // Buscar en 'data'
-      if (respuesta.containsKey('data') && respuesta['data'] is Map) {
-        final data = respuesta['data'] as Map;
-        print('📦 Encontrado objeto "data", claves: ${data.keys.toList()}');
-        
-        if (idPedido == null && data.containsKey('idpedido')) {
-          idPedido = data['idpedido'] is int ? data['idpedido'] : int.tryParse(data['idpedido'].toString());
-          print('📦 idpedido (data): $idPedido');
-        }
-        if (idVenta == null && data.containsKey('idventa')) {
-          idVenta = data['idventa'] is int ? data['idventa'] : int.tryParse(data['idventa'].toString());
-          print('📦 idventa (data): $idVenta');
-        }
-      }
-      
-      // Buscar en 'pedido'
-      if (respuesta.containsKey('pedido') && respuesta['pedido'] is Map) {
-        final pedido = respuesta['pedido'] as Map;
-        print('📦 Encontrado objeto "pedido", claves: ${pedido.keys.toList()}');
-        
-        if (idPedido == null && pedido.containsKey('idpedido')) {
-          idPedido = pedido['idpedido'] is int ? pedido['idpedido'] : int.tryParse(pedido['idpedido'].toString());
-          print('📦 idpedido (pedido): $idPedido');
-        }
-        if (idVenta == null && pedido.containsKey('idventa')) {
-          idVenta = pedido['idventa'] is int ? pedido['idventa'] : int.tryParse(pedido['idventa'].toString());
-          print('📦 idventa (pedido): $idVenta');
-        }
-      }
-    }
-    
-    print('📦 ========================================');
-    print('📦 IDs EXTRAÍDOS FINALES:');
-    print('📦 idPedido = $idPedido');
-    print('📦 idVenta = $idVenta');
-    print('📦 ========================================');
-
-    // 🔥 VALIDACIÓN CRÍTICA
-    if (idVenta == null && idPedido == null) {
-      throw Exception('❌ No se pudo extraer ningún ID de la respuesta del servidor');
-    }
-
-  
-
-    final int idParaAbono = idVenta ?? idPedido!;
-    
-    print('💰 ========================================');
-    print('💰 PREPARANDO ABONO');
-    print('💰 ========================================');
-    print('💰 ID que se usará: $idParaAbono (${idVenta != null ? "es idVenta" : "es idPedido"})');
-    print('💰 Método de pago: $_metodoPago');
-    print('💰 Cantidad a pagar: $abonoIngresado');
-    print('💰 ========================================');
-
- // 🔥 CREAR ABONO
-bool abonoExitoso = false;
-String mensajeErrorAbono = '';
-
-try {
-  if (_metodoPago == 'Efectivo') {
-    print('💰 MÉTODO: EFECTIVO (application/json)');
-
-    final abonoData = {
-      'idpedido': idParaAbono,
-      'metodopago': _metodoPago,
-      'cantidadpagar': abonoIngresado,
-      'TotalPagado': abonoIngresado,
-    };
-
-    print('💰 ========================================');
-    print('💰 DATOS JSON PARA ABONO:');
-    print(json.encode(abonoData));
-    print('💰 ========================================');
-
-    final abonoResponse = await http.post(
-      Uri.parse('https://deliciasoft-backend-i6g9.onrender.com/api/abonos'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: json.encode(abonoData),
-    ).timeout(
-      const Duration(seconds: 30),
-      onTimeout: () => throw Exception('Timeout al crear abono'),
-    );
-
-    print('💰 ========================================');
-    print('💰 RESPUESTA ABONO');
-    print('💰 Status: ${abonoResponse.statusCode}');
-    print('💰 ========================================');
-    print('💰 Body:');
-    print(abonoResponse.body);
-    print('💰 ========================================');
-
-    if (abonoResponse.statusCode == 200 || abonoResponse.statusCode == 201) {
-      print('✅ ABONO CREADO EXITOSAMENTE');
-      abonoExitoso = true;
-    } else {
-      print('⚠️ ERROR AL CREAR ABONO');
-      mensajeErrorAbono = 'Status: ${abonoResponse.statusCode}, Body: ${abonoResponse.body}';
-    }
-
-  } else if (_metodoPago == 'Transferencia') {
-    print('💰 MÉTODO: TRANSFERENCIA (multipart/form-data)');
-
-    var abonoRequest = http.MultipartRequest(
-      'POST',
-      Uri.parse('https://deliciasoft-backend-i6g9.onrender.com/api/abonos'),
-    );
-
-    abonoRequest.headers['Accept'] = 'application/json';
-
-    abonoRequest.fields['idpedido'] = idParaAbono.toString();
-    abonoRequest.fields['metodopago'] = _metodoPago;
-    abonoRequest.fields['cantidadpagar'] = abonoIngresado.toString();
-    abonoRequest.fields['TotalPagado'] = abonoIngresado.toString();
-
-    print('💰 ========================================');
-    print('💰 CAMPOS MULTIPART:');
-    print('💰 idpedido: ${idParaAbono}');
-    print('💰 metodopago: $_metodoPago');
-    print('💰 cantidadpagar: $abonoIngresado');
-    print('💰 TotalPagado: $abonoIngresado');
-
-    if (_comprobanteImagen != null && await _comprobanteImagen!.exists()) {
-      var multipartFile = await http.MultipartFile.fromPath(
-        'imagen',
-        _comprobanteImagen!.path,
-        filename: 'comprobante_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      final ventaResponse = await VentaApiService.createVentaConPedido(
+        fechaVenta: DateTime.now(),
+        idCliente: widget.clientId,
+        idSede: _sedeSeleccionada!, // ✅ Ahora tiene la sede real
+        metodoPago: _metodoPago,
+        tipoVenta: 'pedido',
+        total: _totalPedido,
+        detalleVenta: detalleVenta,
+        estadoVentaId: 1,
+        fechaEntrega: _fechaEntrega!,
+        observaciones: _observacionesController.text.isNotEmpty 
+            ? _observacionesController.text.trim() 
+            : null,
+        // ✅ ELIMINADO: mensajePersonalizado
       );
 
-      abonoRequest.files.add(multipartFile);
-      print('💰 Archivo adjunto: ${_comprobanteImagen!.path}');
-    } else {
-      throw Exception('Comprobante no existe o no se puede leer');
-    }
+      print('✅ Venta creada correctamente');
+      print('   - ID Venta: ${ventaResponse['idventa']}');
+      
+      final int idVenta = ventaResponse['idventa'] is int 
+          ? ventaResponse['idventa'] 
+          : int.parse(ventaResponse['idventa'].toString());
 
-    print('💰 ========================================');
-    print('💰 ENVIANDO REQUEST.');
+      print('   - ID confirmado: $idVenta');
 
-    var abonoStreamResponse = await abonoRequest.send().timeout(
-      const Duration(seconds: 30),
-      onTimeout: () => throw Exception('Timeout al crear abono con transferencia'),
-    );
+      // 3️⃣ CREAR ABONO
+      print('\n💰 Creando abono...');
+      print('   - Método: $_metodoPago');
+      print('   - Monto: \$${abonoIngresado.toStringAsFixed(2)}');
 
-    var abonoResponse = await http.Response.fromStream(abonoStreamResponse);
+      bool abonoExitoso = false;
+      String mensajeErrorAbono = '';
 
-    print('💰 ========================================');
-    print('💰 RESPUESTA ABONO (TRANSFERENCIA)');
-    print('💰 Status: ${abonoResponse.statusCode}');
-    print('💰 ========================================');
-    print('💰 Body:');
-    print(abonoResponse.body);
-    print('💰 ========================================');
-
-    if (abonoResponse.statusCode == 200 || abonoResponse.statusCode == 201) {
-      print('✅ ABONO CON TRANSFERENCIA CREADO EXITOSAMENTE');
-      abonoExitoso = true;
-    } else {
-      print('⚠️ ERROR AL CREAR ABONO CON TRANSFERENCIA');
-      mensajeErrorAbono = 'Status: ${abonoResponse.statusCode}, Body: ${abonoResponse.body}';
-    }
-  }
-
-} catch (abonoError, abonoStackTrace) {
-  print('❌ ========================================');
-  print('❌ EXCEPCIÓN AL CREAR ABONO');
-  print('❌ Error: $abonoError');
-  print('❌ StackTrace: $abonoStackTrace');
-  print('❌ ========================================');
-  mensajeErrorAbono = abonoError.toString();
-}
-
-    // RESULTADO FINAL
-    print('📊 ========================================');
-    print('📊 RESUMEN FINAL');
-    print('📊 Pedido creado: ✅');
-    print('📊 Pedido ID: ${idPedido ?? "N/A"}');
-    print('📊 Venta ID: ${idVenta ?? "N/A"}');
-    print('📊 Abono exitoso: ${abonoExitoso ? "✅" : "❌"}');
-    if (!abonoExitoso && mensajeErrorAbono.isNotEmpty) {
-      print('📊 Error abono: $mensajeErrorAbono');
-    }
-    print('📊 ======================================== FIN');
-
-    setState(() => _isLoading = false);
-    cartService.clearCart();
-    
-    if (abonoExitoso) {
-      _mostrarDialogoExito();
-    } else {
-      _mostrarDialogoExitoConAdvertencia(idPedido ?? idVenta);
-    }
-
-  } catch (e, stackTrace) {
-    print('❌ ========================================');
-    print('❌ ERROR CRÍTICO EN PROCESO COMPLETO');
-    print('❌ Error: $e');
-    print('❌ StackTrace: $stackTrace');
-    print('❌ ========================================');
-    
-    setState(() => _isLoading = false);
-    
-    String errorMessage = 'Error al procesar pedido';
-    if (e.toString().contains('SocketException') || e.toString().contains('Connection')) {
-      errorMessage = 'Error de conexión. Verifica tu internet.';
-    } else if (e.toString().contains('Timeout') || e.toString().contains('agotado')) {
-      errorMessage = 'Tiempo de espera agotado. Intenta nuevamente.';
-    } else if (e.toString().contains('FormatException')) {
-      errorMessage = 'Error al procesar la respuesta del servidor.';
-    } else {
-      errorMessage = e.toString().replaceAll('Exception: ', '');
-    }
-    
-    _mostrarMensaje(errorMessage, Colors.red);
-  }
-}
-
-  //  FUNCIÓN AUXILIAR PARA EXTRAER IDs DE FORMA SEGURA
-  int? _extraerIdSeguro(Map data, List<String> posiblesClaves) {
-    for (String clave in posiblesClaves) {
-      if (data.containsKey(clave)) {
-        final valor = data[clave];
-        if (valor is int) {
-          return valor;
-        } else if (valor is String) {
-          return int.tryParse(valor);
-        } else if (valor != null) {
-          return int.tryParse(valor.toString());
-        }
+      try {
+        await VentaApiService.createAbonoWithImage(
+          idVenta: idVenta,
+          metodoPago: _metodoPago,
+          cantidadPagar: abonoIngresado,
+          imagenComprobante: _comprobanteImagen,
+        );
+        
+        abonoExitoso = true;
+        print('✅ Abono creado exitosamente');
+        
+      } catch (abonoError) {
+        print('❌ Error al crear abono: $abonoError');
+        mensajeErrorAbono = abonoError.toString();
       }
+
+      // 4️⃣ RESULTADO FINAL
+      print('\n📊 ======================================');
+      print('📊 RESUMEN FINAL');
+      print('📊 ======================================');
+      print('📊 Venta creada: ✅');
+      print('📊 Venta ID: $idVenta');
+      print('📊 Sede: $_sedeSeleccionada');
+      print('📊 Abono exitoso: ${abonoExitoso ? "✅" : "❌"}');
+      print('📊 ======================================');
+
+      setState(() => _isLoading = false);
+      cartService.clearCart();
+      
+      if (abonoExitoso) {
+        _mostrarDialogoExito(idVenta);
+      } else {
+        _mostrarDialogoExitoConAdvertencia(idVenta, mensajeErrorAbono);
+      }
+
+    } catch (e, stackTrace) {
+      print('❌ ======================================');
+      print('❌ ERROR CRÍTICO EN PROCESO COMPLETO');
+      print('❌ Error: $e');
+      print('❌ StackTrace: $stackTrace');
+      print('❌ ======================================');
+      
+      setState(() => _isLoading = false);
+      
+      String errorMessage = 'Error al procesar pedido';
+      if (e.toString().contains('SocketException') || e.toString().contains('Connection')) {
+        errorMessage = 'Error de conexión. Verifica tu internet.';
+      } else if (e.toString().contains('Timeout') || e.toString().contains('agotado')) {
+        errorMessage = 'Tiempo de espera agotado. Intenta nuevamente.';
+      } else if (e.toString().contains('FormatException')) {
+        errorMessage = 'Error al procesar la respuesta del servidor.';
+      } else {
+        errorMessage = e.toString().replaceAll('Exception: ', '');
+      }
+      
+      _mostrarMensaje(errorMessage, Colors.red);
     }
-    return null;
   }
 
-  void _mostrarDialogoExito() {
+  void _mostrarDialogoExito(int idVenta) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -558,7 +354,7 @@ try {
             ),
             const SizedBox(height: 12),
             Text(
-              'Tu pedido ha sido registrado correctamente.',
+              'Tu pedido #$idVenta ha sido registrado correctamente.',
               style: TextStyle(fontSize: 16, color: Colors.grey[700]),
               textAlign: TextAlign.center,
             ),
@@ -589,7 +385,7 @@ try {
     );
   }
 
-  void _mostrarDialogoExitoConAdvertencia(int? pedidoId) {
+  void _mostrarDialogoExitoConAdvertencia(int idVenta, String errorAbono) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -616,16 +412,14 @@ try {
             ),
             const SizedBox(height: 12),
             Text(
-              pedidoId != null 
-                  ? 'Tu pedido #$pedidoId ha sido registrado correctamente.'
-                  : 'Tu pedido ha sido registrado correctamente.',
+              'Tu pedido #$idVenta ha sido registrado correctamente.',
               style: TextStyle(fontSize: 16, color: Colors.grey[700]),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
-              '⚠️ Hubo un problema al registrar el abono. Contacta al administrador.',
-              style: TextStyle(fontSize: 14, color: Colors.orange[700], fontWeight: FontWeight.w500),
+              '⚠️ Hubo un problema al registrar el abono:\n$errorAbono\n\nContacta al administrador.',
+              style: TextStyle(fontSize: 13, color: Colors.orange[700], fontWeight: FontWeight.w500),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
@@ -665,10 +459,9 @@ try {
   @override
   void dispose() {
     _observacionesController.dispose();
-    _mensajeController.dispose();
     _abonoController.dispose();
     super.dispose();
-  }// 🔥 CONTINUACIÓN - AGREGAR DESPUÉS DEL dispose() de la Parte 1
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -719,8 +512,6 @@ try {
                     ],
                     const SizedBox(height: 20),
                     _buildObservacionesInput(),
-                    const SizedBox(height: 20),
-                    _buildMensajeInput(),
                     const SizedBox(height: 30),
                     _buildConfirmButton(),
                     const SizedBox(height: 30),
@@ -730,8 +521,6 @@ try {
             ),
     );
   }
-
-  // 🔥 WIDGETS UI
 
   Widget _buildResumenPedido() {
     return Container(
@@ -763,24 +552,6 @@ try {
             ],
           ),
           const SizedBox(height: 16),
-          
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Subtotal',
-                style: TextStyle(fontSize: 16, color: Colors.grey),
-              ),
-              Text(
-                '\$${_formatPrice(_totalPedido)}',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-              ),
-            ],
-          ),
-          
-          const SizedBox(height: 8),
-          const Divider(),
-          const SizedBox(height: 8),
           
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -830,6 +601,7 @@ try {
     );
   }
 
+  // ✅ SELECTOR DE SEDE CORREGIDO - USA SEDES REALES
   Widget _buildSedeSelector() {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -853,133 +625,76 @@ try {
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
               ),
-              if (_sedeSeleccionada == null)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.orange[100],
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Text(
-                    'Requerido',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.orange,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
             ],
           ),
           const SizedBox(height: 16),
+          
           if (_isLoadingSedes)
-            Center(
+            const Center(
               child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: CircularProgressIndicator(color: Colors.pink[400]),
+                padding: EdgeInsets.all(16.0),
+                child: CircularProgressIndicator(color: Colors.pink),
               ),
             )
           else if (_sedes.isEmpty)
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.orange[50],
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.orange[200]!),
+                color: Colors.red[50],
+                borderRadius: BorderRadius.circular(15),
+                border: Border.all(color: Colors.red[200]!),
               ),
-              child: Row(
+              child: const Row(
                 children: [
-                  Icon(Icons.warning_amber_rounded, color: Colors.orange[700]),
-                  const SizedBox(width: 12),
-                  const Expanded(
+                  Icon(Icons.error_outline, color: Colors.red),
+                  SizedBox(width: 12),
+                  Expanded(
                     child: Text(
                       'No hay sedes disponibles',
-                      style: TextStyle(color: Colors.orange, fontWeight: FontWeight.w500),
+                      style: TextStyle(color: Colors.red, fontWeight: FontWeight.w500),
                     ),
                   ),
                 ],
               ),
             )
           else
-            ..._sedes.map((sede) => _buildSedeOption(sede)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSedeOption(dynamic sede) {
-    final dynamic sedeIdDynamic = sede['idsede'] ?? sede['idSede'] ?? sede['id'] ?? sede['IdSede'];
-    
-    if (sedeIdDynamic == null) {
-      return const SizedBox.shrink();
-    }
-    
-    final int sedeIdFinal = sedeIdDynamic is int 
-        ? sedeIdDynamic 
-        : int.tryParse(sedeIdDynamic.toString()) ?? 0;
-    
-    if (sedeIdFinal == 0) {
-      return const SizedBox.shrink();
-    }
-    
-    final String nombreSede = sede['nombre'] ?? sede['nombreSede'] ?? 'Sin nombre';
-    final String direccion = sede['direccion'] ?? 'Sin dirección';
-    final String telefono = sede['telefono'] ?? '';
-    final bool isSelected = _sedeSeleccionada == sedeIdFinal;
-    
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _sedeSeleccionada = sedeIdFinal;
-        });
-      },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: isSelected ? Colors.pink[50] : Colors.grey[50],
-          borderRadius: BorderRadius.circular(15),
-          border: Border.all(
-            color: isSelected ? Colors.pink[400]! : Colors.grey[300]!,
-            width: 2,
-          ),
-        ),
-        child: Row(
-          children: [
-            Radio<int>(
-              value: sedeIdFinal,
-              groupValue: _sedeSeleccionada,
-              onChanged: (value) {
-                setState(() {
-                  _sedeSeleccionada = value;
-                });
-              },
-              activeColor: Colors.pink[400],
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    nombreSede,
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                      color: isSelected ? Colors.pink[700] : Colors.black,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(direccion, style: TextStyle(fontSize: 14, color: Colors.grey[600])),
-                  if (telefono.isNotEmpty) ...[
-                    const SizedBox(height: 2),
-                    Text('Tel: $telefono', style: TextStyle(fontSize: 13, color: Colors.grey[500])),
-                  ],
-                ],
+            DropdownButtonFormField<int>(
+              value: _sedeSeleccionada,
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: Colors.pink[50],
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(15),
+                  borderSide: BorderSide.none,
+                ),
               ),
+              items: _sedes.map((sede) {
+                return DropdownMenuItem<int>(
+                  value: sede['idsede'],
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        sede['nombre'],
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      if (sede['direccion'] != null)
+                        Text(
+                          sede['direccion'],
+                          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                        ),
+                    ],
+                  ),
+                );
+              }).toList(),
+              onChanged: (value) {
+                setState(() => _sedeSeleccionada = value);
+                print('Sede seleccionada: $value');
+              },
+              validator: (value) => value == null ? 'Selecciona una sede' : null,
             ),
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -1028,25 +743,15 @@ try {
                   ),
                   const SizedBox(width: 16),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _fechaEntrega == null
-                              ? 'Seleccionar fecha'
-                              : '${_fechaEntrega!.day.toString().padLeft(2, '0')}/${_fechaEntrega!.month.toString().padLeft(2, '0')}/${_fechaEntrega!.year}',
-                          style: TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.bold,
-                            color: _fechaEntrega == null ? Colors.grey[600] : Colors.black,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Mínimo 15 días, máximo 30 días',
-                          style: TextStyle(fontSize: 13, color: Colors.grey[600]),
-                        ),
-                      ],
+                    child: Text(
+                      _fechaEntrega == null
+                          ? 'Seleccionar fecha'
+                          : '${_fechaEntrega!.day}/${_fechaEntrega!.month}/${_fechaEntrega!.year}',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                        color: _fechaEntrega == null ? Colors.grey[600] : Colors.black,
+                      ),
                     ),
                   ),
                   Icon(Icons.arrow_forward_ios, size: 18, color: Colors.pink[400]),
@@ -1094,7 +799,6 @@ try {
       onTap: () {
         setState(() {
           _metodoPago = metodo;
-          // Limpiar comprobante si cambio a efectivo
           if (metodo == 'Efectivo') {
             _comprobanteImagen = null;
           }
@@ -1187,7 +891,6 @@ try {
                 borderRadius: BorderRadius.circular(15),
                 borderSide: BorderSide(color: Colors.pink[400]!, width: 2),
               ),
-              errorMaxLines: 3,
             ),
             validator: (value) {
               if (value == null || value.isEmpty) {
@@ -1198,15 +901,15 @@ try {
               final double? monto = double.tryParse(valorLimpio);
               
               if (monto == null) {
-                return 'Ingresa un monto válido (solo números)';
+                return 'Ingresa un monto válido';
               }
               
               if (monto < _totalPedido * 0.5) {
-                return 'El abono debe ser mínimo el 50% (\$${_formatPrice(_totalPedido * 0.5)})';
+                return 'El abono debe ser mínimo el 50% (\${_formatPrice(_totalPedido * 0.5)})';
               }
               
               if (monto > _totalPedido) {
-                return 'El abono no puede ser mayor al total del pedido';
+                return 'El abono no puede ser mayor al total';
               }
               
               return null;
@@ -1242,7 +945,7 @@ try {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'El 50% restante se paga al recoger el pedido\nAbono mínimo: \$${_formatPrice(_totalPedido * 0.5)}',
+                    'Abono mínimo: \${_formatPrice(_totalPedido * 0.5)}',
                     style: TextStyle(fontSize: 13, color: Colors.green[900], fontWeight: FontWeight.w500),
                   ),
                 ),
@@ -1254,7 +957,6 @@ try {
     );
   }
 
-  // 🔥 WIDGET PARA SUBIDA DE COMPROBANTE CON VISTA PREVIA
   Widget _buildComprobanteUpload() {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -1297,7 +999,6 @@ try {
           ),
           const SizedBox(height: 16),
           
-          // 🔥 VISTA PREVIA EN TIEMPO REAL
           if (_comprobanteImagen != null) ...[
             Container(
               decoration: BoxDecoration(
@@ -1309,8 +1010,8 @@ try {
                 child: Stack(
                   children: [
                     Image.file(
-                      _comprobanteImagen!, 
-                      height: 250, 
+                      File(_comprobanteImagen!.path), 
+                      height: 200, 
                       width: double.infinity, 
                       fit: BoxFit.cover
                     ),
@@ -1329,8 +1030,6 @@ try {
                               _comprobanteImagen = null;
                             });
                           },
-                          padding: const EdgeInsets.all(8),
-                          constraints: const BoxConstraints(),
                         ),
                       ),
                     ),
@@ -1363,7 +1062,6 @@ try {
             const SizedBox(height: 12),
           ],
           
-          // BOTÓN PARA SUBIR/CAMBIAR COMPROBANTE
           ElevatedButton.icon(
             onPressed: _seleccionarComprobante,
             icon: Icon(
@@ -1382,37 +1080,12 @@ try {
               elevation: 3,
             ),
           ),
-          
-          // INFORMACIÓN ADICIONAL
-          if (_comprobanteImagen == null) ...[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.blue[50],
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.blue[200]!),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(Icons.info_outline, color: Colors.blue[700], size: 20),
-                  const SizedBox(width: 8),
-                  const Expanded(
-                    child: Text(
-                      'Sube una imagen clara de tu comprobante de transferencia.',
-                      style: TextStyle(fontSize: 13, color: Colors.blue),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
         ],
       ),
     );
   }
 
+  // ✅ SOLO OBSERVACIONES - SIN MENSAJE PERSONALIZADO
   Widget _buildObservacionesInput() {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -1438,8 +1111,8 @@ try {
           const SizedBox(height: 16),
           TextFormField(
             controller: _observacionesController,
-            maxLines: 3,
-            maxLength: 200,
+            maxLines: 4,
+            maxLength: 300,
             decoration: InputDecoration(
               hintText: 'Detalles adicionales sobre el pedido...',
               filled: true,
@@ -1456,58 +1129,6 @@ try {
                 borderRadius: BorderRadius.circular(15),
                 borderSide: BorderSide(color: Colors.pink[400]!, width: 2),
               ),
-              counterStyle: TextStyle(color: Colors.grey[600], fontSize: 12),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMensajeInput() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(color: Colors.grey.withOpacity(0.15), spreadRadius: 2, blurRadius: 10, offset: const Offset(0, 4)),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.card_giftcard, color: Colors.pink[400], size: 24),
-              const SizedBox(width: 8),
-              const Text('Mensaje personalizado', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              const SizedBox(width: 8),
-              Text('(opcional)', style: TextStyle(fontSize: 14, color: Colors.grey[600])),
-            ],
-          ),
-          const SizedBox(height: 16),
-          TextFormField(
-            controller: _mensajeController,
-            maxLines: 2,
-            maxLength: 100,
-            decoration: InputDecoration(
-              hintText: 'Mensaje que aparecerá en el producto...',
-              filled: true,
-              fillColor: Colors.grey[50],
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(15),
-                borderSide: BorderSide.none,
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(15),
-                borderSide: BorderSide(color: Colors.grey[300]!, width: 2),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(15),
-                borderSide: BorderSide(color: Colors.pink[400]!, width: 2),
-              ),
-              counterStyle: TextStyle(color: Colors.grey[600], fontSize: 12),
             ),
           ),
         ],
@@ -1549,4 +1170,3 @@ try {
     );
   }
 }
-

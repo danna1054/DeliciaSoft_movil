@@ -245,6 +245,133 @@ class VentaApiService {
     }
   }
 
+  static Future<Map<String, dynamic>> createVentaConPedido({
+  required DateTime fechaVenta,
+  int? idCliente,
+  required int idSede,
+  required String metodoPago,
+  required String tipoVenta,
+  required double total,
+  required List<Map<String, dynamic>> detalleVenta,
+  int? estadoVentaId,
+  DateTime? fechaEntrega, // 🔥 NUEVO
+  String? observaciones, // 🔥 NUEVO
+  String? mensajePersonalizado, // 🔥 NUEVO
+}) async {
+  try {
+    print('📦 Creando nueva venta con información de pedido...');
+    
+    // Validaciones
+    if (metodoPago.isEmpty || metodoPago.length > 20) {
+      throw Exception('Método de pago inválido (máximo 20 caracteres)');
+    }
+    
+    if (total <= 0) {
+      throw Exception('Total debe ser mayor a 0');
+    }
+    
+    if (detalleVenta.isEmpty) {
+      throw Exception('Debe incluir al menos un producto');
+    }
+    
+    // Normalizar tipo de venta
+    final tipoVentaNormalizado = tipoVenta.toLowerCase() == 'venta directa' 
+        ? 'directa' 
+        : tipoVenta.toLowerCase();
+    
+    // Determinar estado automáticamente si no se proporciona
+    final estadoFinal = estadoVentaId ?? 
+        (tipoVentaNormalizado == 'directa' ? 5 : 1);
+    
+    // 🔥 VALIDAR FECHA DE ENTREGA PARA PEDIDOS
+    if (tipoVentaNormalizado == 'pedido' && fechaEntrega == null) {
+      throw Exception('La fecha de entrega es requerida para pedidos');
+    }
+    
+    // Construir body
+    final ventaData = {
+      'fechaventa': fechaVenta.toIso8601String(),
+      'cliente': idCliente,
+      'idsede': idSede,
+      'metodopago': metodoPago,
+      'tipoventa': tipoVentaNormalizado,
+      'estadoVentaId': estadoFinal,
+      'total': total,
+      'detalleventa': detalleVenta,
+      // 🔥 NUEVOS CAMPOS PARA PEDIDOS
+      if (fechaEntrega != null) 'fechaentrega': fechaEntrega.toIso8601String(),
+      if (observaciones != null) 'observaciones': observaciones,
+      if (mensajePersonalizado != null) 'mensajePersonalizado': mensajePersonalizado,
+    };
+    
+    if (kDebugMode) {
+      print('Datos de venta con pedido:');
+      print('  Cliente: ${idCliente ?? "Genérico"}');
+      print('  Sede: $idSede');
+      print('  Método: $metodoPago');
+      print('  Tipo: $tipoVentaNormalizado');
+      print('  Total: \$${total.toStringAsFixed(2)}');
+      print('  Productos: ${detalleVenta.length}');
+      if (fechaEntrega != null) {
+        print('  Fecha Entrega: ${fechaEntrega.toIso8601String()}');
+      }
+      if (observaciones != null) {
+        print('  Observaciones: $observaciones');
+      }
+      if (mensajePersonalizado != null) {
+        print('  Mensaje: $mensajePersonalizado');
+      }
+    }
+    
+    final response = await http.post(
+      Uri.parse('$_baseUrl/venta'),
+      headers: _headers,
+      body: jsonEncode(ventaData),
+    );
+    
+    if (kDebugMode) {
+      print('Status: ${response.statusCode}');
+      print('Response: ${response.body}');
+    }
+    
+    if (response.statusCode == 201 || response.statusCode == 200) {
+      final ventaCreada = jsonDecode(response.body);
+      print('✅ Venta con pedido creada con ID: ${ventaCreada['idventa']}');
+      
+      if (ventaCreada['mensaje'] != null) {
+        print('ℹ️ ${ventaCreada['mensaje']}');
+      }
+      
+      return ventaCreada;
+    } else {
+      String errorMessage = 'Error al crear venta';
+      
+      try {
+        final errorData = jsonDecode(response.body);
+        errorMessage = errorData['message']?.toString() ?? errorMessage;
+        
+        // Mensajes específicos
+        if (errorMessage.contains('inventario') || 
+            errorMessage.contains('Inventario') ||
+            errorMessage.contains('stock')) {
+          errorMessage = '⚠️ Stock insuficiente: $errorMessage';
+        } else if (errorMessage.contains('fecha de entrega')) {
+          errorMessage = '⚠️ $errorMessage';
+        }
+      } catch (e) {
+        if (response.body.isNotEmpty) {
+          errorMessage = response.body;
+        }
+      }
+      
+      throw Exception(errorMessage);
+    }
+  } catch (e) {
+    print('❌ Error al crear venta con pedido: $e');
+    rethrow;
+  }
+}
+
   /// Actualizar estado de venta
   static Future<Map<String, dynamic>> updateEstadoVenta(
     int idVenta, 
