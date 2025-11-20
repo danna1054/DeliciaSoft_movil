@@ -4,6 +4,7 @@ import '../../models/General_models.dart' as GeneralModels;
 import '../../services/donas_api_services.dart';
 import '../../services/cart_services.dart';
 import '../../models/cart_models.dart';
+import 'package:intl/intl.dart';
 
 class PostreScreen extends StatefulWidget {
   final String categoryTitle;
@@ -23,13 +24,10 @@ class _PostreScreenState extends State<PostreScreen> {
   bool isLoading = true;
   String? errorMessage;
 
-  String formatPrice(double price) {
-    final priceStr = price.toStringAsFixed(0);
-    return priceStr.replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (Match m) => '${m[1]}.',
-    );
-  }
+String formatPrice(double price) {
+  final formatter = NumberFormat('#,##0', 'es_CO');
+  return formatter.format(price);
+}
 
   @override
   void initState() {
@@ -174,7 +172,7 @@ void _showSuccessAlert(GeneralModels.ProductModel producto) {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Precio: \$${formatPrice(producto.precioProducto)}',
+                  'Precio: \$ ${formatPrice(producto.precioProducto)}',
                   style: TextStyle(
                     fontSize: (screenWidth * 0.045).clamp(16.0, 18.0),
                     fontWeight: FontWeight.bold,
@@ -334,7 +332,7 @@ void _showSuccessAlert(GeneralModels.ProductModel producto) {
                   const SizedBox(height: 4),
                   if (precio > 0) ...[
                     Text(
-                      '\$${formatPrice(precio)}',
+                      '\$ ${formatPrice(precio)}',
                       style: const TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.bold,

@@ -145,7 +145,7 @@ void _navigateToDetail(GeneralModels.ProductModel producto) {
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
-                          color: Colors.green,
+                          color: Colors.pink,
                         ),
                       ),
                       const SizedBox(height: 4),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart'; // ← Importar para formatear números
 import '../../models/General_models.dart' as GeneralModels;
-import '../../services/donas_api_services.dart'; // ← Usar el servicio unificado
+import '../../services/donas_api_services.dart';
 import 'Detail/product_detail_screen.dart';
 
 class FresaScreen extends StatefulWidget {
@@ -15,6 +16,9 @@ class FresaScreen extends StatefulWidget {
 class _FresaScreenState extends State<FresaScreen> {
   final TextEditingController _searchController = TextEditingController();
   final ProductoApiService _apiService = ProductoApiService();
+
+  // Formateador de números con puntos de miles
+  final NumberFormat _currencyFormat = NumberFormat('#,###', 'es_CO');
 
   List<GeneralModels.ProductModel> allProductos = [];
   List<GeneralModels.ProductModel> filteredProductos = [];
@@ -35,7 +39,6 @@ class _FresaScreenState extends State<FresaScreen> {
         errorMessage = null;
       });
 
-      // Obtener productos por categoría ID 2 (Fresas con Crema)
       List<GeneralModels.ProductModel> productos =
           await _apiService.obtenerProductosPorCategoriaId(2);
 
@@ -141,11 +144,11 @@ class _FresaScreenState extends State<FresaScreen> {
                     const SizedBox(height: 8),
                     if (precio > 0) ...[
                       Text(
-                        '\$${precio.toStringAsFixed(0)}',
+                        '\$${_currencyFormat.format(precio.toInt())}',
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
-                          color: Colors.green,
+                          color: Colors.pink,
                         ),
                       ),
                       const SizedBox(height: 4),

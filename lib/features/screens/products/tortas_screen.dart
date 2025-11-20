@@ -155,7 +155,7 @@ class _TortasScreenState extends State<TortasScreen> {
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
-                          color: Colors.green,
+                          color: Colors.pink,
                         ),
                       ),
                       const SizedBox(height: 4),

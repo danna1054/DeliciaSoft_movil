@@ -19,7 +19,7 @@ class SandwichesScreen extends StatefulWidget {
 class _SandwichesScreenState extends State<SandwichesScreen> {
   final TextEditingController _searchController = TextEditingController();
   final ProductoApiService _apiService = ProductoApiService();
-  final formatoCOP = NumberFormat.currency(locale: 'es_CO', symbol: '\$', decimalDigits: 0);
+  final formatoCOP = NumberFormat('#,##0', 'es_CO');
 
   List<GeneralModels.ProductModel> allProductos = [];
   List<GeneralModels.ProductModel> filteredProductos = [];
@@ -97,7 +97,7 @@ class _SandwichesScreenState extends State<SandwichesScreen> {
       ..precio = producto.precioProducto
       ..ingredientesPersonalizados = {
         'Producto': producto.nombreProducto,
-        'Precio': '\$${producto.precioProducto.toStringAsFixed(0)}',
+        'Precio': '\$ ${formatoCOP.format(producto.precioProducto)}',
       };
 
     cartService.addToCart(
@@ -328,11 +328,11 @@ class _SandwichesScreenState extends State<SandwichesScreen> {
                   const SizedBox(height: 4),
                   if (precio > 0) ...[
                     Text(
-                      '\$${precio.toStringAsFixed(0)}',
+                      '\$ ${formatoCOP.format(precio)}',
                       style: const TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.bold,
-                        color: Colors.green,
+                        color: Colors.pink,
                       ),
                     ),
                     const SizedBox(height: 4),

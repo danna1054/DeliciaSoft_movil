@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/General_models.dart' as GeneralModels;
 import '../../services/donas_api_services.dart';
 import 'Detail/CupcakeDetailScreen.dart';
+import 'package:intl/intl.dart';
 
 class CupcakeScreen extends StatefulWidget {
   final String categoryTitle;
@@ -20,6 +21,8 @@ class _CupcakeScreenState extends State<CupcakeScreen> {
   List<GeneralModels.ProductModel> filteredProductos = [];
   bool isLoading = true;
   String? errorMessage;
+
+  final formatoCOP = NumberFormat('#,##0', 'es_CO');
 
   @override
   void initState() {
@@ -141,7 +144,7 @@ class _CupcakeScreenState extends State<CupcakeScreen> {
                     const SizedBox(height: 8),
                     if (precio > 0) ...[
                       Text(
-                        '\$${precio.toStringAsFixed(0)}',
+                        '\$ ${formatoCOP.format(precio)}',
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,

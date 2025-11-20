@@ -24,7 +24,7 @@ class _ChocolateScreenState extends State<ChocolateScreen> {
   bool isLoading = true;
   String? errorMessage;
 
-  final formatoCOP = NumberFormat.currency(locale: 'es_CO', symbol: '\$', decimalDigits: 0);
+  final formatoCOP = NumberFormat('#,###', 'es_CO');
 
   @override
   void initState() {
@@ -170,7 +170,7 @@ class _ChocolateScreenState extends State<ChocolateScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Precio: ${formatoCOP.format(producto.precioProducto)}',
+                  'Precio: \$${formatoCOP.format(producto.precioProducto)}',
                   style: TextStyle(
                     fontSize: (screenWidth * 0.045).clamp(16.0, 18.0),
                     fontWeight: FontWeight.bold,
@@ -330,7 +330,7 @@ class _ChocolateScreenState extends State<ChocolateScreen> {
                   const SizedBox(height: 4),
                   if (precio > 0) ...[
                     Text(
-                      '${formatoCOP.format(precio)}',
+                      '\$${formatoCOP.format(precio)}',
                       style: const TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.bold,
