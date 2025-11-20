@@ -38,7 +38,7 @@ class _DonasDetailScreenState extends State<DonasDetailScreen> {
   bool cargandoToppings = false;
   bool cargandoSalsas = false;
 
-  final formatoCOP = NumberFormat.currency(locale: 'es_CO', symbol: '\$', decimalDigits: 0);
+  final formatoCOP = NumberFormat.currency(locale: 'es_CO', symbol: '\$ ', decimalDigits: 0, customPattern: '¤#,##0');
 
   @override
   void initState() {

@@ -23,7 +23,7 @@ class _TortaDetailScreenState extends State<TortaDetailScreen> {
   List<String> sabores = [];
   bool isLoadingData = true;
 
-  final formatoCOP = NumberFormat.currency(locale: 'es_CO', symbol: '\$', decimalDigits: 0);
+  final formatoCOP = NumberFormat.currency(locale: 'es_CO', symbol: '\$ ', decimalDigits: 0, customPattern: '¤#,##0');
 
   // ✅ MAPEO MEJORADO: Incluye más variaciones de nombres
   final Map<String, double> preciosPorPorcion = {

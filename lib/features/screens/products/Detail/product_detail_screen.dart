@@ -50,7 +50,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     '24 oz': 20000,
   };
 
-  final formatoCOP = NumberFormat.currency(locale: 'es_CO', symbol: '\$', decimalDigits: 0);
+  final formatoCOP = NumberFormat.currency(locale: 'es_CO', symbol: '\$ ', decimalDigits: 0, customPattern: '¤#,##0');
 
   @override
   void initState() {
