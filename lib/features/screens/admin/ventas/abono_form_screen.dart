@@ -83,7 +83,7 @@ class _AbonoFormScreenState extends State<AbonoFormScreen> {
         });
       }
       
-      print('💰 Suma actual de abonos: \${sum.toStringAsFixed(2)}');
+      print('💰 Suma actual de abonos: \$${sum.toStringAsFixed(2)}');
     } catch (e) {
       print('⚠️ Error al obtener suma de abonos: $e');
     }
@@ -164,7 +164,7 @@ class _AbonoFormScreenState extends State<AbonoFormScreen> {
     
     if (cantidadPagar > saldoDisponible + currentAbonoValue + 0.01) {
       _showErrorSnackBar(
-        'El monto excede el saldo pendiente. Máximo: \${(saldoDisponible + currentAbonoValue).toStringAsFixed(2)}'
+        'El monto excede el saldo pendiente. Máximo: \$${(saldoDisponible + currentAbonoValue).toStringAsFixed(2)}'
       );
       return;
     }
@@ -187,7 +187,7 @@ class _AbonoFormScreenState extends State<AbonoFormScreen> {
         print('📝 Creando nuevo abono...');
         print('  ID Venta: ${widget.idPedido}');
         print('  Método: $_selectedMetodoPago');
-        print('  Monto: \${cantidadPagar.toStringAsFixed(2)}');
+        print('  Monto: \$${cantidadPagar.toStringAsFixed(2)}');
         
         await VentaApiService.createAbonoWithImage(
           idVenta: widget.idPedido,
@@ -349,11 +349,11 @@ class _AbonoFormScreenState extends State<AbonoFormScreen> {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    'Total: \${widget.totalPedido.toStringAsFixed(0)}',
+                    'Total: \$${widget.totalPedido.toStringAsFixed(0)}',
                     style: const TextStyle(fontSize: 15, color: _textGrey),
                   ),
                   Text(
-                    'Saldo: \${saldoPendiente.toStringAsFixed(0)}',
+                    'Saldo: \$${saldoPendiente.toStringAsFixed(0)}',
                     style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.bold,
@@ -414,7 +414,7 @@ class _AbonoFormScreenState extends State<AbonoFormScreen> {
                         decoration: InputDecoration(
                           labelText: 'Cantidad a Pagar',
                           prefixText: '\$ ',
-                          helperText: 'Máximo: \${(saldoDisponible + currentAbonoValue).toStringAsFixed(0)}',
+                          helperText: 'Máximo: \$${(saldoDisponible + currentAbonoValue).toStringAsFixed(0)}',
                           helperStyle: const TextStyle(color: _textGrey, fontSize: 12),
                         ),
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -433,7 +433,7 @@ class _AbonoFormScreenState extends State<AbonoFormScreen> {
                           }
                           
                           if (amount > saldoDisponible + currentAbonoValue + 0.01) {
-                            return 'Excede el saldo (\${(saldoDisponible + currentAbonoValue).toStringAsFixed(0)})';
+                            return 'Excede el saldo (\$${(saldoDisponible + currentAbonoValue).toStringAsFixed(0)})';
                           }
                           
                           return null;
