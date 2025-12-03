@@ -13,10 +13,22 @@ class PedidoListScreen extends StatefulWidget {
 
 class _PedidoListScreenState extends State<PedidoListScreen> {
   late Future<List<Map<String, dynamic>>> _pedidosWithClientFuture;
+  List<Map<String, dynamic>> _pedidosWithClientCache = [];
   int? _expandedPedidoId;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   Set<int> _canceledPedidoIds = {};
+  String _selectedEstado = 'Todos';
+
+  // Estados disponibles
+  final List<String> _estados = [
+    'Todos',
+    'En espera',
+    'En producción',
+    'Por entregar',
+    'Finalizado',
+    'Anulada'
+  ];
 
   // Paleta de colores
   static const Color _primaryRose = Color.fromRGBO(228, 48, 84, 1);
@@ -26,6 +38,8 @@ class _PedidoListScreenState extends State<PedidoListScreen> {
   static const Color _textGrey = Color(0xFF6B7A8C);
   static const Color _accentGreen = Color(0xFF6EC67F);
   static const Color _accentRed = Color(0xFFE57373);
+  static const Color _accentBlue = Color(0xFF64B5F6);
+  static const Color _accentOrange = Color(0xFFFFB74D);
 
   @override
   void initState() {
@@ -50,38 +64,56 @@ class _PedidoListScreenState extends State<PedidoListScreen> {
 
   Future<List<Map<String, dynamic>>> _fetchPedidosWithClientNames() async {
     try {
-      print('📋 Obteniendo pedidos con información de clientes...');
-      
-      final pedidos = await VentaApiService.getAllPedidos();
-      List<Map<String, dynamic>> pedidosWithClient = [];
+      print('📋 Obteniendo pedidos (carga inicial rápida)...');
 
-      for (var pedidoData in pedidos) {
-        String clientName = 'N/A';
-        int? idVenta = pedidoData['idventa'];
-        
-        if (idVenta != null) {
-          try {
-            final ventaData = await VentaApiService.getVentaById(idVenta);
-            
-            if (ventaData['clienteData'] != null) {
-              final nombre = ventaData['clienteData']['nombre'] ?? '';
-              final apellido = ventaData['clienteData']['apellido'] ?? '';
-              clientName = '$nombre $apellido'.trim();
-              if (clientName.isEmpty) clientName = 'Cliente Genérico';
-            }
-          } catch (e) {
-            print('⚠️ Error obteniendo cliente para pedido ${pedidoData['idpedido']}: $e');
-          }
-        }
-        
-        pedidosWithClient.add({
+      final pedidos = await VentaApiService.getAllPedidos();
+
+      // Crear lista inicial rápidamente sin esperar a las ventas
+      _pedidosWithClientCache = pedidos.map((pedidoData) {
+        return {
           'pedido': pedidoData,
-          'clientName': clientName,
-        });
+          'clientName': 'Cargando...',
+          'venta': null,
+        };
+      }).toList();
+
+      // Notificar UI inmediatamente con la lista base
+      // (la función devuelve esta lista y la UI la mostrará mientras se obtienen los detalles)
+      // Luego cargamos las ventas en paralelo y actualizamos la lista a medida que llegan.
+      for (int i = 0; i < _pedidosWithClientCache.length; i++) {
+        final pedidoData = _pedidosWithClientCache[i]['pedido'];
+        final int? idVenta = pedidoData['idventa'];
+
+        if (idVenta != null) {
+          VentaApiService.getVentaById(idVenta).then((ventaData) {
+            try {
+              String clientName = 'N/A';
+              if (ventaData != null) {
+                if (ventaData['clienteData'] != null) {
+                  final nombre = ventaData['clienteData']['nombre'] ?? '';
+                  final apellido = ventaData['clienteData']['apellido'] ?? '';
+                  clientName = '$nombre $apellido'.trim();
+                  if (clientName.isEmpty) clientName = 'Cliente Genérico';
+                } else if (ventaData['cliente'] != null) {
+                  clientName = ventaData['cliente'].toString();
+                }
+              }
+
+              _pedidosWithClientCache[i]['clientName'] = clientName;
+              _pedidosWithClientCache[i]['venta'] = ventaData;
+
+              if (mounted) setState(() {});
+            } catch (e) {
+              print('⚠️ Error procesando venta para pedido ${pedidoData['idpedido']}: $e');
+            }
+          }).catchError((e) {
+            print('⚠️ Error obteniendo venta ID $idVenta: $e');
+          });
+        }
       }
-      
-      print('✅ ${pedidosWithClient.length} pedidos procesados');
-      return pedidosWithClient;
+
+      print('✅ ${_pedidosWithClientCache.length} pedidos cargados (detalles en segundo plano)');
+      return _pedidosWithClientCache;
     } catch (e) {
       print('❌ Error en _fetchPedidosWithClientNames: $e');
       if (mounted) {
@@ -126,7 +158,19 @@ class _PedidoListScreenState extends State<PedidoListScreen> {
       _searchController.clear();
       _searchQuery = '';
       _canceledPedidoIds.clear();
+      _selectedEstado = 'Todos';
     });
+  }
+
+  Color _getEstadoColor(String? estado) {
+    if (estado == null) return _textGrey;
+    final estadoLower = estado.toLowerCase();
+    if (estadoLower.contains('espera')) return _accentOrange;
+    if (estadoLower.contains('producción') || estadoLower.contains('produccion')) return _accentBlue;
+    if (estadoLower.contains('entregar')) return Colors.purple;
+    if (estadoLower.contains('finalizado') || estadoLower.contains('activa')) return _accentGreen;
+    if (estadoLower.contains('anulada') || estadoLower.contains('anulado')) return _accentRed;
+    return _textGrey;
   }
 
   void _cancelPedido(int pedidoId) {
@@ -182,8 +226,42 @@ class _PedidoListScreenState extends State<PedidoListScreen> {
           totalPedido: totalPedido,
         );
       },
-    ).then((_) {
-      _reloadPedidos();
+    ).then((changed) async {
+      // Only refresh the affected venta if the modal reported changes
+      if (changed == true) {
+        try {
+          print('🔄 Abonos cambiados para venta $idVenta — actualizando solo ese registro');
+          final ventaData = await VentaApiService.getVentaById(idVenta);
+
+          // Encontrar en cache y actualizar
+          final index = _pedidosWithClientCache.indexWhere((e) => e['pedido'] != null && e['pedido']['idventa'] == idVenta);
+          if (index != -1) {
+            String clientName = 'N/A';
+            if (ventaData != null) {
+              if (ventaData['clienteData'] != null) {
+                final nombre = ventaData['clienteData']['nombre'] ?? '';
+                final apellido = ventaData['clienteData']['apellido'] ?? '';
+                clientName = '$nombre $apellido'.trim();
+                if (clientName.isEmpty) clientName = 'Cliente Genérico';
+              } else if (ventaData['cliente'] != null) {
+                clientName = ventaData['cliente'].toString();
+              }
+            }
+
+            setState(() {
+              _pedidosWithClientCache[index]['venta'] = ventaData;
+              _pedidosWithClientCache[index]['clientName'] = clientName;
+            });
+          } else {
+            // Si no está en cache (raro), recargar la lista completa
+            _reloadPedidos();
+          }
+        } catch (e) {
+          print('⚠️ Error actualizando venta $idVenta después de cambios en abonos: $e');
+          // fallback: recargar todo
+          _reloadPedidos();
+        }
+      }
     });
   }
 
@@ -532,13 +610,13 @@ class _PedidoListScreenState extends State<PedidoListScreen> {
       body: CustomScrollView(
         slivers: [
           SliverAppBar(
-            expandedHeight: 180.0,
+            expandedHeight: 240.0,
             floating: false,
             pinned: true,
             backgroundColor: _primaryRose,
             flexibleSpace: FlexibleSpaceBar(
               centerTitle: false,
-              titlePadding: const EdgeInsets.only(left: 20, bottom: 60),
+              titlePadding: const EdgeInsets.only(left: 20, bottom: 110),
               title: const Text(
                 'Pedidos',
                 style: TextStyle(
@@ -559,48 +637,85 @@ class _PedidoListScreenState extends State<PedidoListScreen> {
                   alignment: Alignment.bottomCenter,
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
-                    child: TextField(
-                      controller: _searchController,
-                      decoration: InputDecoration(
-                        labelText: 'Buscar pedidos...',
-                        labelStyle: TextStyle(
-                          color: Colors.white.withOpacity(0.8),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TextField(
+                          controller: _searchController,
+                          decoration: InputDecoration(
+                            labelText: 'Buscar pedidos...',
+                            labelStyle: TextStyle(
+                              color: Colors.white.withOpacity(0.8),
+                            ),
+                            hintText: 'Nro. Pedido, Cliente o Fecha',
+                            hintStyle: TextStyle(
+                              color: Colors.white.withOpacity(0.6),
+                            ),
+                            prefixIcon: const Icon(
+                              Icons.search,
+                              color: Colors.white,
+                            ),
+                            filled: true,
+                            fillColor: Colors.white.withOpacity(0.2),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10.0),
+                              borderSide: BorderSide.none,
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10.0),
+                              borderSide: const BorderSide(
+                                color: Colors.white,
+                                width: 1.5,
+                              ),
+                            ),
+                            suffixIcon: _searchQuery.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(
+                                      Icons.clear,
+                                      color: Colors.white,
+                                    ),
+                                    onPressed: () {
+                                      _searchController.clear();
+                                      _onSearchChanged();
+                                    },
+                                  )
+                                : null,
+                          ),
+                          style: const TextStyle(color: Colors.white),
                         ),
-                        hintText: 'Nro. Pedido, Cliente o Fecha',
-                        hintStyle: TextStyle(
-                          color: Colors.white.withOpacity(0.6),
-                        ),
-                        prefixIcon: const Icon(
-                          Icons.search,
-                          color: Colors.white,
-                        ),
-                        filled: true,
-                        fillColor: Colors.white.withOpacity(0.2),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10.0),
-                          borderSide: BorderSide.none,
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10.0),
-                          borderSide: const BorderSide(
-                            color: Colors.white,
-                            width: 1.5,
+
+                        const SizedBox(height: 10),
+
+                        // Filtro de estado
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              value: _selectedEstado,
+                              isExpanded: true,
+                              icon: const Icon(Icons.arrow_drop_down, color: Colors.white),
+                              dropdownColor: _primaryRose,
+                              style: const TextStyle(color: Colors.white, fontSize: 16),
+                              items: _estados.map((String estado) {
+                                return DropdownMenuItem<String>(
+                                  value: estado,
+                                  child: Text(estado, style: const TextStyle(color: Colors.white)),
+                                );
+                              }).toList(),
+                              onChanged: (String? newValue) {
+                                setState(() {
+                                  _selectedEstado = newValue ?? 'Todos';
+                                  _expandedPedidoId = null;
+                                });
+                              },
+                            ),
                           ),
                         ),
-                        suffixIcon: _searchQuery.isNotEmpty
-                            ? IconButton(
-                                icon: const Icon(
-                                  Icons.clear,
-                                  color: Colors.white,
-                                ),
-                                onPressed: () {
-                                  _searchController.clear();
-                                  _onSearchChanged();
-                                },
-                              )
-                            : null,
-                      ),
-                      style: const TextStyle(color: Colors.white),
+                      ],
                     ),
                   ),
                 ),
@@ -658,6 +773,15 @@ class _PedidoListScreenState extends State<PedidoListScreen> {
                 final Map<String, dynamic> pedido = pedidoData['pedido'];
                 final String clientName = pedidoData['clientName'].toLowerCase();
                 final String query = _searchQuery.toLowerCase();
+                final Map<String, dynamic>? venta = pedidoData['venta'];
+
+                // Filtro por estado si aplica
+                if (_selectedEstado != 'Todos') {
+                  final estadoVenta = venta?['estadoVenta']?['nombre_estado'] ?? venta?['nombreEstado'] ?? '';
+                  if (!estadoVenta.toString().toLowerCase().contains(_selectedEstado.toLowerCase())) {
+                    return false;
+                  }
+                }
 
                 if (pedido['idpedido'] != null &&
                     pedido['idpedido'].toString().contains(query)) {
@@ -668,6 +792,7 @@ class _PedidoListScreenState extends State<PedidoListScreen> {
                   return true;
                 }
                 
+                // Nota: ya no filtramos por fecha de entrega aquí para la UI admin
                 if (pedido['fechaentrega'] != null) {
                   try {
                     final fecha = DateTime.parse(pedido['fechaentrega'].toString());
@@ -744,26 +869,62 @@ class _PedidoListScreenState extends State<PedidoListScreen> {
                                   color: _darkGrey,
                                 ),
                               ),
-                              subtitle: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    'Cliente: $clientName',
-                                    style: const TextStyle(
-                                      fontSize: 15,
-                                      color: _textGrey,
-                                    ),
-                                  ),
-                                  Text(
-                                    'Entrega: $fechaEntregaStr',
-                                    style: const TextStyle(
-                                      fontSize: 15,
-                                      color: _textGrey,
-                                    ),
-                                  ),
-                                ],
-                              ),
+                                      subtitle: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            const SizedBox(height: 6),
+                                            Text(
+                                              'Cliente: $clientName',
+                                              style: const TextStyle(
+                                                fontSize: 15,
+                                                color: _textGrey,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Builder(builder: (context) {
+                                              final venta = pedidoData['venta'] as Map<String, dynamic>?;
+
+                                              String estadoVenta;
+                                              if (venta == null) {
+                                                estadoVenta = 'N/A';
+                                              } else {
+                                                final dynamic estadoField = venta['estadoVenta'];
+                                                final dynamic nombreEstadoField = venta['nombreEstado'];
+
+                                                if (estadoField is Map) {
+                                                  estadoVenta = (estadoField['nombre_estado'] ?? nombreEstadoField ?? 'N/A').toString();
+                                                } else if (estadoField != null) {
+                                                  estadoVenta = estadoField.toString();
+                                                } else if (nombreEstadoField != null) {
+                                                  estadoVenta = nombreEstadoField.toString();
+                                                } else {
+                                                  estadoVenta = 'N/A';
+                                                }
+                                              }
+
+                                              final estadoColor = _getEstadoColor(estadoVenta);
+
+                                              return Container(
+                                                padding: const EdgeInsets.symmetric(
+                                                  horizontal: 8,
+                                                  vertical: 2,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  color: estadoColor.withOpacity(0.2),
+                                                  borderRadius: BorderRadius.circular(4),
+                                                ),
+                                                child: Text(
+                                                  estadoVenta,
+                                                  style: TextStyle(
+                                                    color: estadoColor,
+                                                    fontSize: 15,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              );
+                                            }),
+                                          ],
+                                        ),
                               trailing: Icon(
                                 isExpanded
                                     ? Icons.keyboard_arrow_up

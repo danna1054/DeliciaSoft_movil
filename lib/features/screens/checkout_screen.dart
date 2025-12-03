@@ -905,7 +905,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               }
               
               if (monto < _totalPedido * 0.5) {
-                return 'El abono debe ser mínimo el 50% (\${_formatPrice(_totalPedido * 0.5)})';
+                return 'El abono debe ser mínimo el 50% (${_formatPrice(_totalPedido * 0.5)})';
               }
               
               if (monto > _totalPedido) {
@@ -945,7 +945,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Abono mínimo: \${_formatPrice(_totalPedido * 0.5)}',
+                    'Abono mínimo: ${_formatPrice(_totalPedido * 0.5)}',
                     style: TextStyle(fontSize: 13, color: Colors.green[900], fontWeight: FontWeight.w500),
                   ),
                 ),

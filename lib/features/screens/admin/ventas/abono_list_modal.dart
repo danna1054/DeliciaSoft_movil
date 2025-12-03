@@ -21,6 +21,7 @@ class AbonoListModal extends StatefulWidget {
 class _AbonoListModalState extends State<AbonoListModal> {
   late Future<List<Abono>> _abonosFuture;
   late Future<double> _totalAbonadoFuture;
+  bool _hasChanges = false;
 
   // Paleta de colores
   static const Color _primaryRose = Color.fromRGBO(228, 48, 84, 1);
@@ -112,6 +113,7 @@ class _AbonoListModalState extends State<AbonoListModal> {
     ).then((result) {
       if (result == true) {
         print('✅ Abono creado, recargando lista');
+        _hasChanges = true;
         _reloadAbonos();
       }
     });
@@ -132,6 +134,7 @@ class _AbonoListModalState extends State<AbonoListModal> {
     ).then((result) {
       if (result == true) {
         print('✅ Abono actualizado, recargando lista');
+        _hasChanges = true;
         _reloadAbonos();
       }
     });
@@ -164,6 +167,7 @@ class _AbonoListModalState extends State<AbonoListModal> {
                   
                   if (mounted) {
                     Navigator.of(context).pop();
+                    _hasChanges = true;
                     _reloadAbonos();
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
@@ -194,7 +198,12 @@ class _AbonoListModalState extends State<AbonoListModal> {
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
+    return WillPopScope(
+      onWillPop: () async {
+        Navigator.of(context).pop(_hasChanges);
+        return false;
+      },
+      child: Dialog(
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20.0),
       ),
@@ -233,7 +242,7 @@ class _AbonoListModalState extends State<AbonoListModal> {
                 actions: [
                   IconButton(
                     icon: const Icon(Icons.close, color: Colors.white),
-                    onPressed: () => Navigator.of(context).pop(),
+                    onPressed: () => Navigator.of(context).pop(_hasChanges),
                   ),
                 ],
                 shape: const RoundedRectangleBorder(
@@ -374,7 +383,7 @@ class _AbonoListModalState extends State<AbonoListModal> {
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          'Monto: \${(abono.cantidadPagar ?? 0.0).toStringAsFixed(2)}',
+                                          'Monto: \$${(abono.cantidadPagar ?? 0.0).toStringAsFixed(2)}',
                                           style: const TextStyle(
                                             fontWeight: FontWeight.bold,
                                             fontSize: 17,
@@ -472,7 +481,7 @@ class _AbonoListModalState extends State<AbonoListModal> {
             ],
           ),
         ),
-      ),
+      ),)
     );
   }
 }
